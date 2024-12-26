@@ -172,7 +172,7 @@
         <axis xyz="0 0 1" />
         <limit lower="-10" upper="10" effort="100" velocity="1000" />
     </joint>
-    <!--link name="fl_link6">
+    <link name="fl_link6">
         <inertial>
             <origin xyz="0.0471798400661976 0.000102970421835668 -0.000138510949393961" rpy="0 0 0" />
             <mass value="0.462244960775882" />
@@ -200,6 +200,6 @@
         <child link="fl_link6" />
         <axis xyz="1 0 0" />
         <limit lower="-10" upper="10" effort="100" velocity="1000" />
-    </joint-->
+    </joint>
 </robot>
 

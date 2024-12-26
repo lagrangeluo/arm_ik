@@ -15,6 +15,7 @@ class arm_hw:
     
     # store the current joint state
     self.current_arm_state=[]
+    self.arm_state_update_flag=False
     
     # 末端夹爪数值
     self.gripper_value = 0
@@ -35,7 +36,7 @@ class arm_hw:
 
   def gripper_control(self,gripper):
     if not bool(self.current_arm_state):
-      rospy.logwarn("current arm state is None")
+      rospy.logwarn("arm_hw: current arm state is None, abord gripper control")
     else:
       cmd = JointState()
       cmd.header.stamp = rospy.Time.now()
@@ -43,30 +44,39 @@ class arm_hw:
       cmd.position = self.current_arm_state
       if gripper == "close":
         # 关闭夹爪
+        self.gripper_value = 0
         cmd.position[6] = 0
       if gripper == "open":
         # 打开夹爪
-        cmd.position[6] = 0
+        self.gripper_value = 4.3
+        cmd.position[6] = 4.3
+      
+      #self.target_pose_callback(cmd)
+
       self.cmd_pub.publish(cmd)
       
   def motor_add_control(self,joint,angle):
     if not bool(self.current_arm_state):
-      rospy.logwarn("current arm state is None")
+      rospy.logwarn("arm_hw: current arm state is None,abord motor add")
     else:
       cmd = JointState()
       cmd.header.stamp = rospy.Time.now()
       cmd.name = ['joint0', 'joint1', 'joint2', 'joint3','joint4' ,'joint5','joint6']
       cmd.position = self.current_arm_state
       cmd.position[joint] += angle
+      cmd.position.pop()
+
+      self.target_pose_callback(cmd)
       
-      self.cmd_pub.publish(cmd)
+      #self.cmd_pub.publish(cmd)
+
 
     return
 
   def target_pose_callback(self,msg):
 
     if not bool(self.current_arm_state):
-      rospy.logwarn("current arm state is None")
+      rospy.logerr("arm_hw: current arm state is None,abord execute cmd")
     else:
       joint_interval_list = []
       for angle in msg.position:
@@ -75,14 +85,19 @@ class arm_hw:
       joint_interval_list.append(self.gripper_value)
       
       arm_start_angle = []
+      if len(self.current_arm_state)<7:
+        while(len(self.current_arm_state)<7):
+          rospy.logwarn("waiting for arm state update")
       arm_start_angle = [x for x in self.current_arm_state]
-      
+      rospy.loginfo(f"joint_interval:{joint_interval_list}")
+      rospy.loginfo(f"arm_start_angle:{arm_start_angle}")
+
       joint_interval_list = self.list1_sub_list2(joint_interval_list,arm_start_angle)
-      print("Got the joint_interval_angle:", joint_interval_list)
+      #print("Got the joint_interval_angle:", joint_interval_list)
       
       joint_cut_num = self.response_time*self.joint_pub_rate
       joint_step = [a/joint_cut_num for a in joint_interval_list]
-      print("Got joint step: ",joint_step)
+      #print("Got joint step: ",joint_step)
       
       for i in range(0,joint_cut_num):
         
@@ -100,13 +115,17 @@ class arm_hw:
       
       
   def arm_state_callback(self,msg):
+    self.arm_state_update_flag=False
     self.current_arm_state.clear()
     for angle in msg.position:
       self.current_arm_state.append(angle)
+    self.arm_state_update_flag=True
     #print("Get current arm state: ",self.current_arm_state)
     
   def list1_sub_list2(self,list1,list2):
     if len(list1) != len(list2):
+      rospy.logerr(f"list1:{list1}")
+      rospy.logerr(f"list2:{list2}")
       raise ValueError("List1 sub List2 failed!")
     result = [a - b for a,b in zip(list1,list2)]
     return result

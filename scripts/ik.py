@@ -59,8 +59,9 @@ class ik_caculator():
             symbolic=False,
             name="left_arm")
 
-        rospy.loginfo("init chain success")
         self.left_arm_chain.to_json_file(force=True)
+        rospy.loginfo("init chain success")
+        time.sleep(0.2)
 
     
     def init_arm(self):
@@ -68,7 +69,7 @@ class ik_caculator():
         # 初始化变换矩阵和旋转矩阵
         self.Transform_init = self.left_arm_chain.forward_kinematics(qpos)
         self.Transfrom_Rotation_init = self.Transform_init[:3,:3]
-        print("joint zero transform: ",self.Transform_init)
+        #print("joint zero transform: ",self.Transform_init)
 
         qua = rotations.quaternion_from_matrix(self.Transform_init[:3,:3])
         #print("init q:", qua)
@@ -139,7 +140,7 @@ class ik_caculator():
                     target_position[0]+=step_list[0]
                     target_position[1]+=step_list[1]
                     target_position[2]+=step_list[2]
-                rospy.loginfo("target position: ",target_position)
+                rospy.loginfo(f"target position: {target_position}")
                 
 
         # 获取并断言 target_orientation 是一个 3x3 的矩阵
@@ -157,7 +158,7 @@ class ik_caculator():
         # 执行逆解并发布消息
         q = self.left_arm_chain.inverse_kinematics(target_position,target_orientation,'all')
         q = [round(a,3) for a in q]
-        rospy.loginfo("ik joint angle: ", q)
+        rospy.loginfo(f"ik joint angle: {q}")
 
         self.joint_state.position = [q[1],q[2],q[3],q[4],q[5],q[6]]
         self.joint_state.header = Header()
@@ -171,5 +172,6 @@ if __name__=='__main__' :
     # rosnode
     rospy.init_node("pyik_node")
     node = ik_caculator()
+    node.init_arm()
     node.run()
     #rospy.spin()

@@ -1,4 +1,6 @@
 #!/bin/python3
+import sys
+print(sys.executable)
 import rospy
 import time
 from threading import Thread,Lock,Event
@@ -27,27 +29,35 @@ class task_manager:
         
         # 运动到压板预瞄点
         self.ik_caculator.run()
+        time.sleep(2.2)
         
         # 打开夹爪
         self.arm_hw.gripper_control(gripper="open")
-        
+        time.sleep(0.5)
+
         # 机械臂前伸
-        self.ik_caculator.run(step_list=[0.05,0,0])
-        
+        self.ik_caculator.run(step_list=[0.065,0,0])
+        time.sleep(2.2)
+
         # 闭合夹爪
         self.arm_hw.gripper_control(gripper="close")
-        
+        time.sleep(0.5)
+
         # 机械臂后伸
-        self.ik_caculator.run(step_list=[0.02,0,0])
-        
+        self.ik_caculator.run(step_list=[0.03,0,0])
+        time.sleep(2.2)
+
         # 旋转压板
-        self.arm_hw.motor_add_control(joint=6,angle=0)
-        
+        self.arm_hw.motor_add_control(joint=5,angle=-1.57)
+        time.sleep(2.2)
+
         # 打开夹爪
         self.arm_hw.gripper_control(gripper="open")
+        time.sleep(0.5)
         
         # 回到预瞄点
         self.ik_caculator.run()
+        time.sleep(2.2)
         
         # 机械臂归零
         self.ik_caculator.init_arm()
@@ -63,7 +73,7 @@ def signal_handler(signal,frame):
     rospy.signal_shutdown('Shutting down...')
 
 if __name__=='__main__' :
-    rospy.init_node("arm task manager")
+    rospy.init_node("arm_task_manager")
     task_manager_node = task_manager()
     task_manager_node.task_thread.start()
     rospy.spin()
