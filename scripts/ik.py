@@ -7,6 +7,7 @@ import time
 from pytransform3d import rotations
 from sensor_msgs.msg import JointState
 import tf2_ros
+import tf
 from std_msgs.msg import Header
 
 
@@ -89,6 +90,43 @@ class ik_caculator():
         self.pub.publish(joint_state_init)
         rospy.loginfo("arm init success!")
         time.sleep(3)
+
+    def calculate_angle_with_tf2(self):
+
+        while not rospy.is_shutdown():
+            try:
+                # 获取 base_link 到 grab_link 的变换
+                transform: TransformStamped = self.tf_buffer.lookup_transform(
+                    "base_link", "grab_link", rospy.Time(0))
+
+                # 提取旋转四元数
+                quat = transform.transform.rotation
+                quaternion = [quat.x, quat.y, quat.z, quat.w]
+
+                # 将四元数转换为旋转矩阵
+                rot_matrix = tf.transformations.quaternion_matrix(quaternion)
+
+                # 提取 grab_link 的 z 轴方向（在 base_link 坐标系中）
+                z_axis = rot_matrix[:3, 2]  # 旋转矩阵的第三列是 z 轴方向
+
+                # 投影到 xz 平面
+                z_xz = np.array([z_axis[0], 0, z_axis[2]])
+
+                # 归一化投影向量
+                z_xz_normalized = z_xz / np.linalg.norm(z_xz)
+
+                # 计算 z 轴与 xz 平面的夹角
+                angle = np.arctan2(np.linalg.norm(np.cross([0, 0, 1], z_xz_normalized)), np.dot([0, 0, 1], z_xz_normalized))
+
+                # 将弧度转为角度
+                angle_deg = np.degrees(angle)
+
+                rospy.loginfo("Angle between grab_link z-axis and base_link xz-plane: {:.2f} degrees".format(angle_deg))
+                return angle_deg
+
+            except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
+                rospy.logwarn("Transform not available, retrying...")
+
 
     def get_target_tcp(self):
         try:

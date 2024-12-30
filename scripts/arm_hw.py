@@ -51,9 +51,10 @@ class arm_hw:
         self.gripper_value = 4.3
         cmd.position[6] = 4.3
       
-      #self.target_pose_callback(cmd)
+      cmd.position.pop()
+      self.target_pose_callback(cmd)
 
-      self.cmd_pub.publish(cmd)
+      #self.cmd_pub.publish(cmd)
       
   def motor_add_control(self,joint,angle):
     if not bool(self.current_arm_state):

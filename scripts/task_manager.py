@@ -33,7 +33,7 @@ class task_manager:
         
         # 打开夹爪
         self.arm_hw.gripper_control(gripper="open")
-        time.sleep(0.5)
+        time.sleep(1.8)
 
         # 机械臂前伸
         self.ik_caculator.run(step_list=[0.065,0,0])
@@ -41,19 +41,19 @@ class task_manager:
 
         # 闭合夹爪
         self.arm_hw.gripper_control(gripper="close")
-        time.sleep(0.5)
+        time.sleep(1.8)
 
         # 机械臂后伸
-        self.ik_caculator.run(step_list=[0.03,0,0])
+        self.ik_caculator.run(step_list=[0.04,0,0])
         time.sleep(2.2)
 
         # 旋转压板
         self.arm_hw.motor_add_control(joint=5,angle=-1.57)
-        time.sleep(2.2)
+        time.sleep(1)
 
         # 打开夹爪
         self.arm_hw.gripper_control(gripper="open")
-        time.sleep(0.5)
+        time.sleep(1.8)
         
         # 回到预瞄点
         self.ik_caculator.run()
