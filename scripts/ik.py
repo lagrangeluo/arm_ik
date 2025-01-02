@@ -2,12 +2,14 @@
 import os
 from ikpy import chain
 import numpy as np
+import math
 import rospy
 import time
 from pytransform3d import rotations
 from sensor_msgs.msg import JointState
 import tf2_ros
 import tf
+import tf_conversions
 from std_msgs.msg import Header
 
 
@@ -142,9 +144,26 @@ class ik_caculator():
                                                         transform.transform.rotation.z,
                                                         transform.transform.rotation.w)
             
+            rotation = transform.transform.rotation
+            # 将旋转四元数转换为旋转矩阵
+            rotation_matrix = tf_conversions.quaternion_matrix([rotation.x, rotation.y, rotation.z, rotation.w])
+            # camera_link 坐标系的 z 轴是旋转矩阵的第三列
+            z_axis_camera_link_in_base_link = rotation_matrix[:3, 2]
+            # z 轴的归一化坐标（如果需要的话）
+            norm = np.linalg.norm(z_axis_camera_link_in_base_link)
+            normalized_z_axis = z_axis_camera_link_in_base_link / norm
+            rospy.loginfo(f"{self.child_frame} z 轴在 {self.parent_frame} 坐标系下的归一化坐标: {normalized_z_axis}")
+            theta_radians = math.atan2(normalized_z_axis[1], normalized_z_axis[0])
+            # 构造旋转矩阵
+            R_z = np.array([
+                [math.cos(theta_radians), -math.sin(theta_radians), 0],
+                [math.sin(theta_radians), math.cos(theta_radians), 0],
+                [0, 0, 1]
+            ])
+            R_rotation = np.dot(R_z, self.Transform_init)
+            
             return {"x":transform.transform.translation.x,"y":transform.transform.translation.y,"z":transform.transform.translation.z,
-                    "qx":transform.transform.rotation.x,"qy":transform.transform.rotation.y,"qz":transform.transform.rotation.z,
-                    "qw":transform.transform.rotation.w}
+                    "rotation":R_rotation}
             
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
             rospy.logerr(f"ik caculator: Got TF from {self.parent_frame} to {self.child_frame} failed!, escape run process")
@@ -191,7 +210,10 @@ class ik_caculator():
             elif isinstance(target_orientation, np.ndarray):
                 assert target_orientation.shape == (3, 3), "ik caculator: target_orientation should be a 3x3 matrix"
         else:
-            target_orientation = self.Transfrom_Rotation_init
+            # 获取初始姿态
+            #target_orientation = self.Transfrom_Rotation_init
+            # 获取法向量姿态
+            target_orientation = target_pose["rotation"]
 
         # 执行逆解并发布消息
         q = self.left_arm_chain.inverse_kinematics(target_position,target_orientation,'all')
