@@ -9,13 +9,20 @@ import time
 class arm_hw:
   def __init__(self):
     # ros publisher and subscriber
-    self.cmd_pub = rospy.Publisher('/master/joint_right', JointState, queue_size=10)
+    self.cmd_right_pub = rospy.Publisher('/master/joint_right', JointState, queue_size=10)
+    self.cmd_left_pub = rospy.Publisher('/master/joint_left', JointState, queue_size=10)
     self.arm_state = rospy.Subscriber("/puppet/joint_right", JointState, self.arm_state_callback)
-    self.instruction_sub = rospy.Subscriber("/target_pose/right", JointState, self.target_pose_callback)
+    self.arm_left_state = rospy.Subscriber("/puppet/joint_left", JointState, self.arm_left_state_callback)
+
+    self.instruction_right_sub = rospy.Subscriber("/target_pose/right", JointState, self.target_pose_callback)
+    self.instruction_left_sub = rospy.Subscriber("/target_pose/left", JointState, self.target_pose_left_callback)
     
     # store the current joint state
     self.current_arm_state=[]
+    self.current_arm_left_state=[]
     self.arm_state_update_flag=False
+    self.arm_left_state_update_flag=False
+    self.lock_rotation_flag=False
     
     # 末端夹爪数值
     self.gripper_value = 0
@@ -34,14 +41,18 @@ class arm_hw:
     else:
       return None
 
-  def gripper_control(self,gripper):
+  def gripper_control(self,gripper,arm_type="right"):
     if not bool(self.current_arm_state):
       rospy.logwarn("arm_hw: current arm state is None, abord gripper control")
     else:
       cmd = JointState()
       cmd.header.stamp = rospy.Time.now()
       cmd.name = ['joint0', 'joint1', 'joint2', 'joint3','joint4' ,'joint5','joint6']
-      cmd.position = self.current_arm_state
+      if arm_type=="right":
+        cmd.position = self.current_arm_state
+      elif arm_type=="left":
+        cmd.position = self.current_arm_left_state
+      
       if gripper == "close":
         # 关闭夹爪
         self.gripper_value = 0
@@ -52,9 +63,11 @@ class arm_hw:
         cmd.position[6] = 4.3
       
       cmd.position.pop()
-      self.target_pose_callback(cmd)
+      if arm_type=="right":
+        self.target_pose_callback(cmd)
+      if arm_type == "left":
+        self.target_pose_left_callback(cmd)
 
-      #self.cmd_pub.publish(cmd)
       
   def motor_add_control(self,joint,angle):
     if not bool(self.current_arm_state):
@@ -69,10 +82,6 @@ class arm_hw:
 
       self.target_pose_callback(cmd)
       
-      #self.cmd_pub.publish(cmd)
-
-
-    return
 
   def target_pose_callback(self,msg):
 
@@ -84,11 +93,16 @@ class arm_hw:
         joint_interval_list.append(angle)
       # 添加夹爪的数值
       joint_interval_list.append(self.gripper_value)
+
+      if self.lock_rotation_flag==True:
+        joint_interval_list[5] = self.current_arm_state[5]
+        self.lock_rotation_flag=False
       
       arm_start_angle = []
       if len(self.current_arm_state)<7:
-        while(len(self.current_arm_state)<7):
+        while not rospy.is_shutdown() and (len(self.current_arm_state)<7):
           rospy.logwarn("waiting for arm state update")
+          time.sleep(0.1)
       arm_start_angle = [x for x in self.current_arm_state]
       rospy.loginfo(f"joint_interval:{joint_interval_list}")
       rospy.loginfo(f"arm_start_angle:{arm_start_angle}")
@@ -109,20 +123,71 @@ class arm_hw:
         cmd.position = [round(x,3) for x in cmd.position]
         #cmd.position = [0,0,0,0,0,0,0]
         
-        self.cmd_pub.publish(cmd)
+        self.cmd_right_pub.publish(cmd)
         
         time.sleep(self.joint_interval)
         #time.sleep(0.05)
       
+  def target_pose_left_callback(self,msg):
+
+    if not bool(self.current_arm_left_state):
+      rospy.logerr("arm_hw: current arm state is None,abord execute cmd")
+    else:
+      joint_interval_list = []
+      for angle in msg.position:
+        joint_interval_list.append(angle)
+      # 添加夹爪的数值
+      joint_interval_list.append(self.gripper_value)
+
+      if self.lock_rotation_flag==True:
+        joint_interval_list[5] = self.current_arm_left_state[5]
+        self.lock_rotation_flag=False
       
+      arm_start_angle = []
+      if len(self.current_arm_left_state)<7:
+        while not rospy.is_shutdown() and (len(self.current_arm_left_state)<7):
+          rospy.logwarn("waiting for arm state update")
+          time.sleep(0.1)
+      arm_start_angle = [x for x in self.current_arm_left_state]
+      rospy.loginfo(f"joint_interval:{joint_interval_list}")
+      rospy.loginfo(f"arm_start_angle:{arm_start_angle}")
+
+      joint_interval_list = self.list1_sub_list2(joint_interval_list,arm_start_angle)
+      #print("Got the joint_interval_angle:", joint_interval_list)
+      
+      joint_cut_num = self.response_time*self.joint_pub_rate
+      joint_step = [a/joint_cut_num for a in joint_interval_list]
+      #print("Got joint step: ",joint_step)
+      
+      for i in range(0,joint_cut_num):
+        
+        cmd = JointState()
+        cmd.header.stamp = rospy.Time.now()
+        cmd.name = ['joint0', 'joint1', 'joint2', 'joint3','joint4' ,'joint5','joint6']
+        cmd.position = [i*a + b for a,b in zip(joint_step,arm_start_angle)]
+        cmd.position = [round(x,3) for x in cmd.position]
+        #cmd.position = [0,0,0,0,0,0,0]
+        
+        self.cmd_left_pub.publish(cmd)
+        
+        time.sleep(self.joint_interval)
+        #time.sleep(0.05)
+
   def arm_state_callback(self,msg):
     self.arm_state_update_flag=False
     self.current_arm_state.clear()
     for angle in msg.position:
       self.current_arm_state.append(angle)
     self.arm_state_update_flag=True
-    #print("Get current arm state: ",self.current_arm_state)
-    
+
+
+  def arm_left_state_callback(self,msg):
+    self.arm_left_state_update_flag=False
+    self.current_arm_left_state.clear()
+    for angle in msg.position:
+      self.current_arm_left_state.append(angle)
+    self.arm_left_state_update_flag=True
+  
   def list1_sub_list2(self,list1,list2):
     if len(list1) != len(list2):
       rospy.logerr(f"list1:{list1}")

@@ -9,14 +9,15 @@ from pytransform3d import rotations
 from sensor_msgs.msg import JointState
 import tf2_ros
 import tf
-import tf_conversions
+import tf.transformations as tf_trans
 from std_msgs.msg import Header
 
 
 class ik_caculator():
     def __init__(self):
         # 初始化ros 相关组件
-        self.pub = rospy.Publisher('/target_pose/right', JointState, queue_size=10)
+        self.pub_right = rospy.Publisher('/target_pose/right', JointState, queue_size=10)
+        self.pub_left = rospy.Publisher('/target_pose/left', JointState, queue_size=10)
         rospy.loginfo("ik caculator init")
         self.joint_state = JointState()
         self.joint_state.name = ['fl_joint1', 'fl_joint2', 'fl_joint3', 'fl_joint4','fl_joint5' ,'fl_joint6']
@@ -27,7 +28,8 @@ class ik_caculator():
 
         # 定义坐标系
         self.parent_frame = 'base_link'
-        self.child_frame = 'grab_link'
+        self.green_frame = 'grab_link'
+        self.red_frame = 'grab_red_link'
 
         ###### Left Arm ######
         left_arm_links = [
@@ -49,7 +51,7 @@ class ik_caculator():
                             ]
 
         left_arm_elements = [x for pair in zip(left_arm_links, left_arm_joints) for x in pair] + ["fl_link6"]
-        rospy.loginfo(f'{left_arm_elements}')
+        #rospy.loginfo(f'{left_arm_elements}')
         # Note: 'Links' in IKPY correspond to 'Joints' in URDF terminology. 'Links' in URDF are stripped by IKPY. 
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         urdf_file_path = os.path.join(parent_dir, "urdf","arx5_description_ik.urdf")
@@ -64,19 +66,19 @@ class ik_caculator():
 
         self.left_arm_chain.to_json_file(force=True)
         rospy.loginfo("init chain success")
-        time.sleep(0.2)
 
-    
-    def init_arm(self):
         qpos = np.zeros(7)
         # 初始化变换矩阵和旋转矩阵
         self.Transform_init = self.left_arm_chain.forward_kinematics(qpos)
         self.Transfrom_Rotation_init = self.Transform_init[:3,:3]
-        #print("joint zero transform: ",self.Transform_init)
 
         qua = rotations.quaternion_from_matrix(self.Transform_init[:3,:3])
         #print("init q:", qua)
         #print("rotation: ",self.Transform_init[:3, :3])
+        time.sleep(0.2)
+
+    
+    def init_arm(self,puppet="right"):
 
         init_position = [0.05, 0, 0.02]
         init_orientation = self.Transform_init[:3,:3]
@@ -89,7 +91,10 @@ class ik_caculator():
         joint_state_init.header = Header()
         joint_state_init.header.stamp = rospy.Time.now()
         time.sleep(0.2)
-        self.pub.publish(joint_state_init)
+        if puppet == "right":
+            self.pub_right.publish(joint_state_init)
+        elif puppet == "left":
+            self.pub_left.publish(joint_state_init)
         rospy.loginfo("arm init success!")
         time.sleep(3)
 
@@ -130,11 +135,14 @@ class ik_caculator():
                 rospy.logwarn("Transform not available, retrying...")
 
 
-    def get_target_tcp(self):
+    def get_target_tcp(self,color):
         try:
-            # 获取从 parent_frame 到 child_frame 的变换
-            transform = self.tf_buffer.lookup_transform(self.parent_frame, self.child_frame, rospy.Time(0))
-            
+            if color=="green":
+                grab_link = self.green_frame
+            elif color=="red":
+                grab_link = self.red_frame
+
+            transform = self.tf_buffer.lookup_transform(self.parent_frame, grab_link, rospy.Time(0))
             # 打印平移和旋转信息
             rospy.loginfo("Translation: x=%f, y=%f, z=%f", transform.transform.translation.x, 
                                                         transform.transform.translation.y, 
@@ -146,13 +154,13 @@ class ik_caculator():
             
             rotation = transform.transform.rotation
             # 将旋转四元数转换为旋转矩阵
-            rotation_matrix = tf_conversions.quaternion_matrix([rotation.x, rotation.y, rotation.z, rotation.w])
+            rotation_matrix = tf_trans.quaternion_matrix([rotation.x, rotation.y, rotation.z, rotation.w])
             # camera_link 坐标系的 z 轴是旋转矩阵的第三列
             z_axis_camera_link_in_base_link = rotation_matrix[:3, 2]
             # z 轴的归一化坐标（如果需要的话）
             norm = np.linalg.norm(z_axis_camera_link_in_base_link)
             normalized_z_axis = z_axis_camera_link_in_base_link / norm
-            rospy.loginfo(f"{self.child_frame} z 轴在 {self.parent_frame} 坐标系下的归一化坐标: {normalized_z_axis}")
+            rospy.loginfo(f"{grab_link} z 轴在 {self.parent_frame} 坐标系下的归一化坐标: {normalized_z_axis}")
             theta_radians = math.atan2(normalized_z_axis[1], normalized_z_axis[0])
             # 构造旋转矩阵
             R_z = np.array([
@@ -160,20 +168,20 @@ class ik_caculator():
                 [math.sin(theta_radians), math.cos(theta_radians), 0],
                 [0, 0, 1]
             ])
-            R_rotation = np.dot(R_z, self.Transform_init)
+            R_rotation = np.dot(R_z, self.Transfrom_Rotation_init)
             
             return {"x":transform.transform.translation.x,"y":transform.transform.translation.y,"z":transform.transform.translation.z,
-                    "rotation":R_rotation}
+                    "rotation":R_rotation,"theta":theta_radians}
             
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
-            rospy.logerr(f"ik caculator: Got TF from {self.parent_frame} to {self.child_frame} failed!, escape run process")
+            rospy.logerr(f"ik caculator: Got TF from {self.parent_frame} to {grab_link} failed!, escape run process")
             return None
 
 
     # 输入目标姿态列表，执行逆解：target_position:(x,y,z),target_orientation:Matrix(3:3)
     # 若不指定position和orientation，则自动默认为初始位置的姿态角
     # step_list:[x,y,z]，该列表代表在原有坐标基础上是否要添加偏移量
-    def run(self,target_position=None,target_orientation=None,step_list=None):
+    def run(self,target_position=None,target_orientation=None,step_list=None,color="green"):
         
         # 获取并断言 target_position
         if target_position is not None:
@@ -186,7 +194,7 @@ class ik_caculator():
                 target_position[1]+=step_list[1]
                 target_position[2]+=step_list[2]
         else:
-            target_pose = self.get_target_tcp()
+            target_pose = self.get_target_tcp(color=color)
             if target_pose is None:
                 rospy.logerr("ik caculator: target pose is None , break down current task")
                 return
@@ -194,8 +202,8 @@ class ik_caculator():
                 target_position=[target_pose["x"],target_pose["y"],target_pose["z"]]
                 # 如果有偏移量，则加上
                 if step_list is not None:
-                    target_position[0]+=step_list[0]
-                    target_position[1]+=step_list[1]
+                    target_position[0]+=step_list[0]*math.cos(target_pose["theta"])
+                    target_position[1]+=step_list[1]*math.sin(target_pose["theta"])
                     target_position[2]+=step_list[2]
                 rospy.loginfo(f"target position: {target_position}")
                 
@@ -225,7 +233,7 @@ class ik_caculator():
         self.joint_state.header.stamp = rospy.Time.now()
         time.sleep(0.2)
         self.joint_state.header.stamp = rospy.Time.now()
-        self.pub.publish(self.joint_state)
+        self.pub_right.publish(self.joint_state)
 
     
 if __name__=='__main__' :
