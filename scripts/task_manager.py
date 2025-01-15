@@ -73,26 +73,27 @@ class task_manager:
                 continue
             elif self.cmd_type == "right_open_gripper":
                 self.task_state = "run_right_open_gripper"
-                self.arm_hw.gripper_control(gripper="open",arm_type="right")
+                self.arm_hw.gripper_control(gripper="open",puppet="right")
                 self.cmd_type = None
                 continue
             elif self.cmd_type == "right_close_gripper":
                 self.task_state = "run_right_close_gripper"
-                self.arm_hw.gripper_control(gripper="close",arm_type="right")
+                self.arm_hw.gripper_control(gripper="close",puppet="right")
                 self.cmd_type = None
                 continue
             elif self.cmd_type == "left_open_gripper":
                 self.task_state = "run_left_open_gripper"
-                self.arm_hw.gripper_control(gripper="open",arm_type="left")
+                self.arm_hw.gripper_control(gripper="open",puppet="left")
                 self.cmd_type = None
                 continue
             elif self.cmd_type == "left_close_gripper":
                 self.task_state = "run_left_close_gripper"
-                self.arm_hw.gripper_control(gripper="close",arm_type="left")
+                self.arm_hw.gripper_control(gripper="close",puppet="left")
                 self.cmd_type = None
                 continue
             
-            if self.cmd_type == "grab_green" or self.cmd_type == "grab_red" or self.cmd_type == "test":
+            if self.cmd_type == "right_grab_green" or self.cmd_type == "right_grab_red" \
+            or self.cmd_type == "left_grab_green" or self.cmd_type == "left_grab_red" or self.cmd_type == "test":
                 map1.start_caculate()
 
             counter = 0
@@ -109,18 +110,33 @@ class task_manager:
                 # 机械臂归位
                 self.ik_caculator.init_arm()
             
-            if self.cmd_type == "grab_green":
+            # right arm 
+            if self.cmd_type == "right_grab_green":
                 self.task_state = "run_grab_green"
-                self.grab(color="green")
-            elif self.cmd_type == "grab_red":
+                self.grab(color="green",puppet="right")
+            elif self.cmd_type == "right_grab_red":
                 self.task_state = "run_grab_red"
-                self.grab(color="red")
-            elif self.cmd_type == "put_green":
+                self.grab(color="red",puppet="right")
+            elif self.cmd_type == "right_put_green":
                 self.task_state = "run_put_green"
-                self.put(color="green")
-            elif self.cmd_type == "put_red":
+                self.put(color="green",puppet="right")
+            elif self.cmd_type == "right_put_red":
                 self.task_state = "run_put_red"
-                self.put(color="red")
+                self.put(color="red",puppet="right")
+            
+            # left arm
+            if self.cmd_type == "left_grab_green":
+                self.task_state = "run_grab_green"
+                self.grab(color="green",puppet="left")
+            elif self.cmd_type == "left_grab_red":
+                self.task_state = "run_grab_red"
+                self.grab(color="red",puppet="left")
+            elif self.cmd_type == "left_put_green":
+                self.task_state = "run_put_green"
+                self.put(color="green",puppet="left")
+            elif self.cmd_type == "left_put_red":
+                self.task_state = "run_put_red"
+                self.put(color="red",puppet="left")
             elif self.cmd_type == "test":
                 self.test()
             
@@ -131,67 +147,67 @@ class task_manager:
             self.cmd_type = None
             rospy.loginfo("******* end *******") 
 
-    def grab(self,color):
+    def grab(self,color,puppet):
         # 运动到压板预瞄点
-        self.ik_caculator.run(color=color)
+        self.ik_caculator.run(color=color,puppet=puppet)
         time.sleep(2.2)
         
         # 打开夹爪
-        self.arm_hw.gripper_control(gripper="open")
+        self.arm_hw.gripper_control(gripper="open",puppet=puppet)
 
         # 机械臂前伸
-        self.ik_caculator.run(step_list=[0.085,0,0],color=color)
+        self.ik_caculator.run(step_list=[0.085,0,0],color=color,puppet=puppet)
         time.sleep(2.2)
 
         # 闭合夹爪
-        self.arm_hw.gripper_control(gripper="close")
+        self.arm_hw.gripper_control(gripper="close",puppet=puppet)
 
         # 机械臂后伸
-        self.ik_caculator.run(step_list=[0.06,0,0],color=color)
+        self.ik_caculator.run(step_list=[0.06,0,0],color=color,puppet=puppet)
         time.sleep(2.2)
 
         # 旋转压板
-        self.arm_hw.motor_add_control(joint=5,angle=-1.57)
+        self.arm_hw.motor_add_control(joint=5,angle=-1.57,puppet=puppet)
 
         # 打开夹爪
-        self.arm_hw.gripper_control(gripper="open")
+        self.arm_hw.gripper_control(gripper="open",puppet=puppet)
         
         # 回到预瞄点
-        self.ik_caculator.run(color=color)
+        self.ik_caculator.run(color=color,puppet=puppet)
         time.sleep(2.2)
 
-    def put(self,color):
+    def put(self,color,puppet):
         # 运动到压板预瞄点
-        self.ik_caculator.run(color=color)
+        self.ik_caculator.run(color=color,puppet=puppet)
         time.sleep(2.2)
         
         # 打开夹爪
-        self.arm_hw.gripper_control(gripper="open")
+        self.arm_hw.gripper_control(gripper="open",puppet=puppet)
 
         # 旋转压板
-        self.arm_hw.motor_add_control(joint=5,angle=-1.57)
+        self.arm_hw.motor_add_control(joint=5,angle=-1.57,puppet=puppet)
 
         # 机械臂前伸
         self.arm_hw.lock_rotation_flag=True
-        self.ik_caculator.run(step_list=[0.085,0,0],color=color)
+        self.ik_caculator.run(step_list=[0.085,0,0],color=color,puppet=puppet)
         time.sleep(2.2)
 
         # 闭合夹爪
-        self.arm_hw.gripper_control(gripper="close")
+        self.arm_hw.gripper_control(gripper="close",puppet=puppet)
 
         # 机械臂后伸
         self.arm_hw.lock_rotation_flag=True
-        self.ik_caculator.run(step_list=[0.06,0,0],color=color)
+        self.ik_caculator.run(step_list=[0.06,0,0],color=color,puppet=puppet)
         time.sleep(2.2)
 
         # 旋转压板
-        self.arm_hw.motor_add_control(joint=5,angle=1.57)
+        self.arm_hw.motor_add_control(joint=5,angle=1.57,puppet=puppet)
 
         # 打开夹爪
-        self.arm_hw.gripper_control(gripper="open")
+        self.arm_hw.gripper_control(gripper="open",puppet=puppet)
         
         # 回到预瞄点
-        self.ik_caculator.run(color=color)
+        self.ik_caculator.run(color=color,puppet=puppet)
         time.sleep(2.2)
     
     def test(self):
@@ -203,16 +219,16 @@ class task_manager:
     def task_cmd_callback(self,msg):
         rospy.loginfo("Got cmd ros msg")
         if msg.data == "right_grab_green":
-            self.cmd_type = "grab_green"
+            self.cmd_type = "right_grab_green"
         
         elif msg.data == "right_put_green":
-            self.cmd_type = "put_green"
+            self.cmd_type = "right_put_green"
         
         elif msg.data == "right_grab_red":
-            self.cmd_type = "grab_red"
+            self.cmd_type = "left_grab_red"
         
         elif msg.data == "right_put_red":
-            self.cmd_type = "put_red"
+            self.cmd_type = "left_put_red"
         
         elif msg.data == "init_left":
             self.cmd_type = "init_left"

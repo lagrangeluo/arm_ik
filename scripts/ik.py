@@ -181,7 +181,7 @@ class ik_caculator():
     # 输入目标姿态列表，执行逆解：target_position:(x,y,z),target_orientation:Matrix(3:3)
     # 若不指定position和orientation，则自动默认为初始位置的姿态角
     # step_list:[x,y,z]，该列表代表在原有坐标基础上是否要添加偏移量
-    def run(self,target_position=None,target_orientation=None,step_list=None,color="green"):
+    def run(self,target_position=None,target_orientation=None,step_list=None,color="green",puppet="right"):
         
         # 获取并断言 target_position
         if target_position is not None:
@@ -233,7 +233,10 @@ class ik_caculator():
         self.joint_state.header.stamp = rospy.Time.now()
         time.sleep(0.2)
         self.joint_state.header.stamp = rospy.Time.now()
-        self.pub_right.publish(self.joint_state)
+        if puppet=="right":
+            self.pub_right.publish(self.joint_state)
+        elif puppet=="left":
+            self.pub_left.publish(self.joint_state)
 
     
 if __name__=='__main__' :
