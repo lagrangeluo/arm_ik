@@ -28,6 +28,7 @@ class ik_caculator():
 
         # 定义坐标系
         self.parent_frame = 'base_link'
+        self.parent_left_frame = 'base_link_l'
         self.green_frame = 'grab_link'
         self.red_frame = 'grab_red_link'
 
@@ -78,7 +79,7 @@ class ik_caculator():
         time.sleep(0.2)
 
     
-    def init_arm(self,puppet="right"):
+    def init_arm(self,puppet="all"):
 
         init_position = [0.05, 0, 0.02]
         init_orientation = self.Transform_init[:3,:3]
@@ -91,9 +92,9 @@ class ik_caculator():
         joint_state_init.header = Header()
         joint_state_init.header.stamp = rospy.Time.now()
         time.sleep(0.2)
-        if puppet == "right":
+        if puppet == "right" or puppet=="all":
             self.pub_right.publish(joint_state_init)
-        elif puppet == "left":
+        if puppet == "left" or puppet=="all":
             self.pub_left.publish(joint_state_init)
         rospy.loginfo("arm init success!")
         time.sleep(3)
@@ -135,14 +136,18 @@ class ik_caculator():
                 rospy.logwarn("Transform not available, retrying...")
 
 
-    def get_target_tcp(self,color):
+    def get_target_tcp(self,color,puppet="right"):
         try:
             if color=="green":
                 grab_link = self.green_frame
             elif color=="red":
                 grab_link = self.red_frame
+            if puppet=="right":
+                parent_link = self.parent_frame
+            elif puppet=="left":
+                parent_link = self.parent_left_frame
 
-            transform = self.tf_buffer.lookup_transform(self.parent_frame, grab_link, rospy.Time(0))
+            transform = self.tf_buffer.lookup_transform(parent_link, grab_link, rospy.Time(0))
             # 打印平移和旋转信息
             rospy.loginfo("Translation: x=%f, y=%f, z=%f", transform.transform.translation.x, 
                                                         transform.transform.translation.y, 
@@ -160,7 +165,7 @@ class ik_caculator():
             # z 轴的归一化坐标（如果需要的话）
             norm = np.linalg.norm(z_axis_camera_link_in_base_link)
             normalized_z_axis = z_axis_camera_link_in_base_link / norm
-            rospy.loginfo(f"{grab_link} z 轴在 {self.parent_frame} 坐标系下的归一化坐标: {normalized_z_axis}")
+            rospy.loginfo(f"{grab_link} z 轴在 {parent_link} 坐标系下的归一化坐标: {normalized_z_axis}")
             theta_radians = math.atan2(normalized_z_axis[1], normalized_z_axis[0])
             # 构造旋转矩阵
             R_z = np.array([
@@ -174,7 +179,7 @@ class ik_caculator():
                     "rotation":R_rotation,"theta":theta_radians}
             
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
-            rospy.logerr(f"ik caculator: Got TF from {self.parent_frame} to {grab_link} failed!, escape run process")
+            rospy.logerr(f"ik caculator: Got TF from {parent_link} to {grab_link} failed!, escape run process")
             return None
 
 
@@ -194,7 +199,7 @@ class ik_caculator():
                 target_position[1]+=step_list[1]
                 target_position[2]+=step_list[2]
         else:
-            target_pose = self.get_target_tcp(color=color)
+            target_pose = self.get_target_tcp(color=color,puppet=puppet)
             if target_pose is None:
                 rospy.logerr("ik caculator: target pose is None , break down current task")
                 return
@@ -234,8 +239,10 @@ class ik_caculator():
         time.sleep(0.2)
         self.joint_state.header.stamp = rospy.Time.now()
         if puppet=="right":
+            rospy.logwarn("start command right arm")
             self.pub_right.publish(self.joint_state)
         elif puppet=="left":
+            rospy.logwarn("start command left arm")
             self.pub_left.publish(self.joint_state)
 
     

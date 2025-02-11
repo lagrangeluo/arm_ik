@@ -106,9 +106,9 @@ class task_manager:
             
             rospy.loginfo("-------start--------")
             
-            if args.init:
-                # 机械臂归位
-                self.ik_caculator.init_arm()
+            # if args.init:
+            #     # 机械臂归位
+            #     self.ik_caculator.init_arm()
             
             # right arm 
             if self.cmd_type == "right_grab_green":
@@ -149,6 +149,7 @@ class task_manager:
 
     def grab(self,color,puppet):
         # 运动到压板预瞄点
+        self.arm_hw.fold_arm(puppet=puppet)
         self.ik_caculator.run(color=color,puppet=puppet)
         time.sleep(2.2)
         
@@ -157,14 +158,14 @@ class task_manager:
 
         # 机械臂前伸
         self.ik_caculator.run(step_list=[0.085,0,0],color=color,puppet=puppet)
-        time.sleep(2.2)
+        time.sleep(2.1)
 
         # 闭合夹爪
         self.arm_hw.gripper_control(gripper="close",puppet=puppet)
 
         # 机械臂后伸
         self.ik_caculator.run(step_list=[0.06,0,0],color=color,puppet=puppet)
-        time.sleep(2.2)
+        time.sleep(2.1)
 
         # 旋转压板
         self.arm_hw.motor_add_control(joint=5,angle=-1.57,puppet=puppet)
@@ -174,10 +175,12 @@ class task_manager:
         
         # 回到预瞄点
         self.ik_caculator.run(color=color,puppet=puppet)
-        time.sleep(2.2)
+        time.sleep(2.1)
+        self.arm_hw.fold_arm(puppet=puppet)
 
     def put(self,color,puppet):
         # 运动到压板预瞄点
+        self.arm_hw.fold_arm(puppet=puppet)
         self.ik_caculator.run(color=color,puppet=puppet)
         time.sleep(2.2)
         
@@ -189,16 +192,16 @@ class task_manager:
 
         # 机械臂前伸
         self.arm_hw.lock_rotation_flag=True
-        self.ik_caculator.run(step_list=[0.085,0,0],color=color,puppet=puppet)
-        time.sleep(2.2)
+        self.ik_caculator.run(step_list=[0.08,0,0],color=color,puppet=puppet)
+        time.sleep(2.1)
 
         # 闭合夹爪
         self.arm_hw.gripper_control(gripper="close",puppet=puppet)
 
         # 机械臂后伸
         self.arm_hw.lock_rotation_flag=True
-        self.ik_caculator.run(step_list=[0.06,0,0],color=color,puppet=puppet)
-        time.sleep(2.2)
+        self.ik_caculator.run(step_list=[0.05,0,0],color=color,puppet=puppet)
+        time.sleep(2.1)
 
         # 旋转压板
         self.arm_hw.motor_add_control(joint=5,angle=1.57,puppet=puppet)
@@ -208,11 +211,13 @@ class task_manager:
         
         # 回到预瞄点
         self.ik_caculator.run(color=color,puppet=puppet)
-        time.sleep(2.2)
+        time.sleep(2.1)
+        self.arm_hw.fold_arm(puppet=puppet)
     
     def test(self):
         # 运动到压板预瞄点
-        self.ik_caculator.run()
+        self.ik_caculator.run(color="green",puppet="left")
+        #self.ik_caculator.run(color="green",puppet="right")
         time.sleep(3.2)
 
 
@@ -225,9 +230,21 @@ class task_manager:
             self.cmd_type = "right_put_green"
         
         elif msg.data == "right_grab_red":
-            self.cmd_type = "left_grab_red"
+            self.cmd_type = "right_grab_red"
         
         elif msg.data == "right_put_red":
+            self.cmd_type = "right_put_red"
+
+        elif msg.data == "left_grab_green":
+            self.cmd_type = "left_grab_green"
+        
+        elif msg.data == "left_put_green":
+            self.cmd_type = "left_put_green"
+        
+        elif msg.data == "left_grab_red":
+            self.cmd_type = "left_grab_red"
+        
+        elif msg.data == "left_put_red":
             self.cmd_type = "left_put_red"
         
         elif msg.data == "init_left":

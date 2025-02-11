@@ -50,9 +50,9 @@ class arm_hw:
       cmd.header.stamp = rospy.Time.now()
       cmd.name = ['joint0', 'joint1', 'joint2', 'joint3','joint4' ,'joint5','joint6']
       if puppet=="right":
-        cmd.position = self.current_arm_state
+        cmd.position = [x for x in self.current_arm_state]
       elif puppet=="left":
-        cmd.position = self.current_arm_left_state
+        cmd.position = [x for x in self.current_arm_left_state]
       
       if gripper == "close":
         # 关闭夹爪
@@ -81,7 +81,10 @@ class arm_hw:
       cmd = JointState()
       cmd.header.stamp = rospy.Time.now()
       cmd.name = ['joint0', 'joint1', 'joint2', 'joint3','joint4' ,'joint5','joint6']
-      cmd.position = self.current_arm_state
+      if puppet=="right":
+        cmd.position = [x for x in self.current_arm_state]
+      elif puppet=="left":
+        cmd.position = [x for x in self.current_arm_left_state]
       cmd.position[joint] += angle
       cmd.position.pop()
 
@@ -90,10 +93,24 @@ class arm_hw:
       if puppet=="left":
         self.target_pose_left_callback(cmd)
       
+  def fold_arm(self,puppet):
+    cmd = JointState()
+    cmd.header.stamp = rospy.Time.now()
+    cmd.name = ['joint0', 'joint1', 'joint2', 'joint3','joint4' ,'joint5','joint6']
+    if puppet=="right":
+      cmd.position = [0.8,0,0,0,0,0]
+    elif puppet=="left":
+      cmd.position = [-0.8,0,0,0,0,0]
+
+    if puppet=="right":
+      self.target_pose_callback(cmd)
+    if puppet=="left":
+      self.target_pose_left_callback(cmd)
+
   def target_pose_callback(self,msg):
 
     if not bool(self.current_arm_state):
-      rospy.logerr("arm_hw: current arm state is None,abord execute cmd")
+      rospy.logerr("arm_hw: current right arm state is None,abord execute cmd")
     else:
       joint_interval_list = []
       for angle in msg.position:
@@ -106,10 +123,9 @@ class arm_hw:
         self.lock_rotation_flag=False
       
       arm_start_angle = []
-      if len(self.current_arm_state)<7:
-        while not rospy.is_shutdown() and (len(self.current_arm_state)<7):
-          rospy.logwarn("waiting for arm state update")
-          time.sleep(0.1)
+      while not rospy.is_shutdown() and self.arm_state_update_flag==False:
+        rospy.logwarn("waiting for arm state update")
+        time.sleep(0.1)
       arm_start_angle = [x for x in self.current_arm_state]
       rospy.loginfo(f"joint_interval:{joint_interval_list}")
       rospy.loginfo(f"arm_start_angle:{arm_start_angle}")
@@ -138,7 +154,7 @@ class arm_hw:
   def target_pose_left_callback(self,msg):
 
     if not bool(self.current_arm_left_state):
-      rospy.logerr("arm_hw: current arm state is None,abord execute cmd")
+      rospy.logerr("arm_hw: current left arm state is None,abord execute cmd")
     else:
       joint_interval_list = []
       for angle in msg.position:
@@ -151,9 +167,8 @@ class arm_hw:
         self.lock_rotation_flag=False
       
       arm_start_angle = []
-      if len(self.current_arm_left_state)<7:
-        while not rospy.is_shutdown() and (self.arm_left_state_update_flag==False):
-          rospy.logwarn("waiting for arm state update")
+      while not rospy.is_shutdown() and self.arm_left_state_update_flag==False:
+          rospy.logwarn("waiting for left arm state update")
           time.sleep(0.1)
       arm_start_angle = [x for x in self.current_arm_left_state]
       rospy.loginfo(f"joint_interval:{joint_interval_list}")

@@ -648,7 +648,7 @@ def start_caculate():
     transform_grab.transform.translation.y = 0
 
     # transform_grab.transform.translation.z = -0.13
-    transform_grab.transform.translation.z = -0.13
+    transform_grab.transform.translation.z = -0.12
 
     transform_grab.transform.rotation.x = 0
     transform_grab.transform.rotation.y = 0
