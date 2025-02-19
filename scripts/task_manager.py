@@ -164,7 +164,7 @@ class task_manager:
         self.arm_hw.gripper_control(gripper="close",puppet=puppet)
 
         # 机械臂后伸
-        self.ik_caculator.run(step_list=[0.06,0,0],color=color,puppet=puppet)
+        self.ik_caculator.run(step_list=[0.055,0,0],color=color,puppet=puppet)
         time.sleep(2.1)
 
         # 旋转压板
@@ -200,7 +200,7 @@ class task_manager:
 
         # 机械臂后伸
         self.arm_hw.lock_rotation_flag=True
-        self.ik_caculator.run(step_list=[0.05,0,0],color=color,puppet=puppet)
+        self.ik_caculator.run(step_list=[0.045,0,0],color=color,puppet=puppet)
         time.sleep(2.1)
 
         # 旋转压板

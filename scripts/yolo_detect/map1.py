@@ -554,7 +554,7 @@ def start_caculate():
 
     center_list = []
     normal_list = []
-    while not rospy.is_shutdown() and len(center_list) < 20:
+    while not rospy.is_shutdown() and len(center_list) < 12:
         # YOLO检测关键点 (2D坐标)
         #cv2.imshow("raw pic",frame)
         frame = rgb_img_deque.pop()
