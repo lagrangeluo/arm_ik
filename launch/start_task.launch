@@ -20,11 +20,11 @@
   <!-- <node name="hand_eye_tf" pkg="tf" type="static_transform_publisher" 
   args="-0.01 0.25 0.6 -0.624 0.671 -0.281 0.284 base_link camera_link 100" /> -->
   <node name="hand_eye_tf" pkg="tf" type="static_transform_publisher" 
-  args="-0.02 0.254 0.663 -0.624 0.671 -0.281 0.284 base_link camera_link 100" />
+  args="-0.02 0.254 0.69 -0.624 0.671 -0.281 0.284 base_link camera_link 100" />
 
   <!--手眼标定参数，左臂坐标 -->
   <node name="left_hand_eye_tf" pkg="tf" type="static_transform_publisher" 
-  args="-0.01 0.58 0 0 0 0 base_link base_link_l 100" />
+  args="-0.01 0.58 0.02 0 0 0 base_link base_link_l 100" />
 
 
   <node name="green_to_red_tf" pkg="tf" type="static_transform_publisher" 
