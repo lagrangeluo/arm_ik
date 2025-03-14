@@ -5,6 +5,7 @@ import rospy
 import time
 from threading import Thread,Lock,Event
 import signal
+import json
 
 from std_msgs.msg import String
 from ik import ik_caculator
@@ -22,8 +23,10 @@ class task_manager:
         map1.start_rgb_detector()
 
         self.cmd_sub = rospy.Subscriber("/task_cmd",String,self.task_cmd_callback)
+        self.aim_sub = rospy.Subscriber("/aim_result",String,self.aim_callback)
         self.state_pub = rospy.Publisher('/task_states', String, queue_size=10)
         self.cmd_type = None
+        self.aim_list = []
         
         self.task_thread = Thread(target=self.run_task)
         self.task_states_thread = Thread(target=self.pub_state)
@@ -221,6 +224,15 @@ class task_manager:
         #self.ik_caculator.run(color="green",puppet="right")
         time.sleep(3.2)
 
+    def aim_green(self,color,puppet):
+        self.aim_list.clear()
+        time.sleep(0.2)
+        if self.aim_list:
+            self.ik_caculator.run(step_list=[0.085,0,0],color=color,puppet=puppet)
+            time.sleep(2.1)
+        else:
+            rospy.logwarn('aim green failed, aim list is empty')
+            return
 
     def task_cmd_callback(self,msg):
         rospy.loginfo("Got cmd ros msg")
@@ -267,6 +279,19 @@ class task_manager:
             self.cmd_type = "test" 
         elif msg.data == "stop":
             self.cmd_type = "stop"
+    
+    def aim_callback(self,msg):
+        try:
+            # 解析 JSON 数据
+            data = json.loads(msg.data)
+            # 访问 JSON 字段示例
+            if "green" in data:
+                self.aim_list.clear()
+                self.aim_list.append(data['green']['x'])
+                self.aim_list.append(data['green']['y'])
+
+        except json.JSONDecodeError as e:
+            rospy.logerr(f"Failed to decode JSON: {e}")
 
         
 def signal_handler(signal,frame):
