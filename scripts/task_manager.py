@@ -43,6 +43,7 @@ class task_manager:
 
         while not rospy.is_shutdown():
             log_flag = False
+            # 等待新任务进来
             while not rospy.is_shutdown() and self.cmd_type is None:
                 if log_flag == False:
                     rospy.logwarn("waiting for cmd topic to start task")
@@ -94,7 +95,7 @@ class task_manager:
             
             if self.cmd_type == "right_grab_green" or self.cmd_type == "right_grab_red" \
             or self.cmd_type == "left_grab_green" or self.cmd_type == "left_grab_red" or self.cmd_type == "test":
-                map1.start_caculate()
+                result = map1.start_caculate()
 
             counter = 0
             while not rospy.is_shutdown() and map1.get_kps_flag is False:
@@ -264,6 +265,8 @@ class task_manager:
 
         elif msg.data == "test":
             self.cmd_type = "test" 
+        elif msg.data == "stop":
+            self.cmd_type = "stop"
 
         
 def signal_handler(signal,frame):

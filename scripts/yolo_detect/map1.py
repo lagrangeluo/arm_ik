@@ -527,7 +527,7 @@ def start_caculate():
         print("rgb_img type: ",type(rgb_img)," point type: ",type(point_img))
         if(ros_event.is_set()):
             rospy.loginfo("shuting down")
-            return
+            return False
 
     rospy.loginfo("getimg!")
     # realsense相机内参
@@ -565,6 +565,10 @@ def start_caculate():
         print("kps: ",kps)
         kps = shrink_kps(kps,1.5)
         if kps==None:
+            error_count=error_count+1
+            if error_count>20:
+                rospy.loginfo("error count > 10,shuting down")
+                return False
             continue
         kps_plane = shrink_kps(kps,0.25)
 
@@ -739,6 +743,7 @@ def start_caculate():
 
         # wait for tf to be published
         time.sleep(0.2)
+        return True
 
 
 def pub_tf_thread():
