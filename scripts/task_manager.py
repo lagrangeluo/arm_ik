@@ -26,7 +26,7 @@ class task_manager:
         self.aim_sub = rospy.Subscriber("/aim_result",String,self.aim_callback)
         self.state_pub = rospy.Publisher('/task_states', String, queue_size=10)
         self.cmd_type = None
-        self.aim_list = []
+        self.aim_dic = {'green':[],'red':[]}
         
         self.task_thread = Thread(target=self.run_task)
         self.task_states_thread = Thread(target=self.pub_state)
@@ -160,9 +160,12 @@ class task_manager:
         # 打开夹爪
         self.arm_hw.gripper_control(gripper="open",puppet=puppet)
 
+        # aim瞄准绿色并向前探
+        self.aim(color=color,puppet=puppet)
+
         # 机械臂前伸
-        self.ik_caculator.run(step_list=[0.085,0,0],color=color,puppet=puppet)
-        time.sleep(2.1)
+        # self.ik_caculator.run(step_list=[0.085,0,0],color=color,puppet=puppet)
+        # time.sleep(2.1)
 
         # 闭合夹爪
         self.arm_hw.gripper_control(gripper="close",puppet=puppet)
@@ -224,11 +227,15 @@ class task_manager:
         #self.ik_caculator.run(color="green",puppet="right")
         time.sleep(3.2)
 
-    def aim_green(self,color,puppet):
-        self.aim_list.clear()
+    def aim(self,color,puppet):
+        self.aim_dic['green'].clear()
+        self.aim_dic['red'].clear()
         time.sleep(0.2)
-        if self.aim_list:
-            self.ik_caculator.run(step_list=[0.085,0,0],color=color,puppet=puppet)
+        if color == 'green' and self.aim_dic['green']:
+            self.ik_caculator.run(step_list=[0.085,self.aim_dic[0],self.aim_dic[1]],color=color,puppet=puppet)
+            time.sleep(2.1)
+        elif color == 'red' and self.arm_dic['red']:
+            self.ik_caculator.run(step_list=[0.085,self.aim_dic[0],self.aim_dic[1]],color=color,puppet=puppet)
             time.sleep(2.1)
         else:
             rospy.logwarn('aim green failed, aim list is empty')
@@ -284,11 +291,19 @@ class task_manager:
         try:
             # 解析 JSON 数据
             data = json.loads(msg.data)
+            # 清除字典
+            self.aim_dic['green'].clear()
+            self.aim_dic['red'].clear()
+            green = data['green']
+            red = data['red']
+
             # 访问 JSON 字段示例
-            if "green" in data:
-                self.aim_list.clear()
-                self.aim_list.append(data['green']['x'])
-                self.aim_list.append(data['green']['y'])
+            if  green:
+                self.aim_dic['green'].append(green['x'])
+                self.aim_dic['green'].append(green['y'])
+            if red:
+                self.aim_dic['red'].append(red['x'])
+                self.aim_dic['red'].append(red['y'])
 
         except json.JSONDecodeError as e:
             rospy.logerr(f"Failed to decode JSON: {e}")
