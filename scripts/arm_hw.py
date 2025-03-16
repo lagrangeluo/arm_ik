@@ -127,8 +127,8 @@ class arm_hw:
         rospy.logwarn("waiting for arm state update")
         time.sleep(0.1)
       arm_start_angle = [x for x in self.current_arm_state]
-      rospy.loginfo(f"joint_interval:{joint_interval_list}")
-      rospy.loginfo(f"arm_start_angle:{arm_start_angle}")
+      # rospy.loginfo(f"joint_interval:{joint_interval_list}")
+      # rospy.loginfo(f"arm_start_angle:{arm_start_angle}")
 
       joint_interval_list = self.list1_sub_list2(joint_interval_list,arm_start_angle)
       #print("Got the joint_interval_angle:", joint_interval_list)
@@ -171,8 +171,8 @@ class arm_hw:
           rospy.logwarn("waiting for left arm state update")
           time.sleep(0.1)
       arm_start_angle = [x for x in self.current_arm_left_state]
-      rospy.loginfo(f"joint_interval:{joint_interval_list}")
-      rospy.loginfo(f"arm_start_angle:{arm_start_angle}")
+      # rospy.loginfo(f"joint_interval:{joint_interval_list}")
+      # rospy.loginfo(f"arm_start_angle:{arm_start_angle}")
 
       joint_interval_list = self.list1_sub_list2(joint_interval_list,arm_start_angle)
       #print("Got the joint_interval_angle:", joint_interval_list)

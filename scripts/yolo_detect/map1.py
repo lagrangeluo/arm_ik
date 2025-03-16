@@ -554,7 +554,8 @@ def start_caculate():
 
     center_list = []
     normal_list = []
-    while not rospy.is_shutdown() and len(center_list) < 12:
+    error_count = 0
+    while not rospy.is_shutdown() and len(center_list) < 6:
         # YOLO检测关键点 (2D坐标)
         #cv2.imshow("raw pic",frame)
         frame = rgb_img_deque.pop()
@@ -565,10 +566,10 @@ def start_caculate():
         print("kps: ",kps)
         kps = shrink_kps(kps,1.5)
         if kps==None:
-            error_count=error_count+1
-            if error_count>20:
-                rospy.loginfo("error count > 10,shuting down")
-                return False
+            # error_count=error_count+1
+            # if error_count>20:
+            #     rospy.loginfo("error count > 10,shuting down")
+            #     return False
             continue
         kps_plane = shrink_kps(kps,0.25)
 

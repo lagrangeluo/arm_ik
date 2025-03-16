@@ -149,13 +149,13 @@ class ik_caculator():
 
             transform = self.tf_buffer.lookup_transform(parent_link, grab_link, rospy.Time(0))
             # 打印平移和旋转信息
-            rospy.loginfo("Translation: x=%f, y=%f, z=%f", transform.transform.translation.x, 
-                                                        transform.transform.translation.y, 
-                                                        transform.transform.translation.z)
-            rospy.loginfo("Rotation: x=%f, y=%f, z=%f, w=%f", transform.transform.rotation.x,
-                                                        transform.transform.rotation.y,
-                                                        transform.transform.rotation.z,
-                                                        transform.transform.rotation.w)
+            # rospy.loginfo("Translation: x=%f, y=%f, z=%f", transform.transform.translation.x, 
+            #                                             transform.transform.translation.y, 
+            #                                             transform.transform.translation.z)
+            # rospy.loginfo("Rotation: x=%f, y=%f, z=%f, w=%f", transform.transform.rotation.x,
+            #                                             transform.transform.rotation.y,
+            #                                             transform.transform.rotation.z,
+            #                                             transform.transform.rotation.w)
             
             rotation = transform.transform.rotation
             # 将旋转四元数转换为旋转矩阵
@@ -175,7 +175,7 @@ class ik_caculator():
             ])
             R_rotation = np.dot(R_z, self.Transfrom_Rotation_init)
             
-            return {"x":transform.transform.translation.x,"y":transform.transform.translation.y,"z":transform.transform.translation.z,
+            return {"x":transform.transform.translation.x,"y":transform.transform.translation.y,"z":0.245,
                     "rotation":R_rotation,"theta":theta_radians}
             
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
@@ -207,8 +207,11 @@ class ik_caculator():
                 target_position=[target_pose["x"],target_pose["y"],target_pose["z"]]
                 # 如果有偏移量，则加上
                 if step_list is not None:
-                    target_position[0]+=step_list[0]*math.cos(target_pose["theta"])
-                    target_position[1]+=step_list[1]*math.sin(target_pose["theta"])
+                    theta = target_pose["theta"]
+                    x = step_list[0]
+                    y = step_list[1]
+                    target_position[0]+=x*math.cos(theta) + y*math.sin(theta)
+                    target_position[1]+=-x*math.sin(theta) + y*math.cos(theta)
                     target_position[2]+=step_list[2]
                 rospy.loginfo(f"target position: {target_position}")
                 

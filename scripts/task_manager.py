@@ -6,6 +6,7 @@ import time
 from threading import Thread,Lock,Event
 import signal
 import json
+import math
 
 from std_msgs.msg import String
 from ik import ik_caculator
@@ -23,7 +24,7 @@ class task_manager:
         map1.start_rgb_detector()
 
         self.cmd_sub = rospy.Subscriber("/task_cmd",String,self.task_cmd_callback)
-        self.aim_sub = rospy.Subscriber("/aim_result",String,self.aim_callback)
+        self.aim_sub = rospy.Subscriber("/detect_result",String,self.aim_callback)
         self.state_pub = rospy.Publisher('/task_states', String, queue_size=10)
         self.cmd_type = None
         self.aim_dic = {'green':[],'red':[]}
@@ -161,7 +162,7 @@ class task_manager:
         self.arm_hw.gripper_control(gripper="open",puppet=puppet)
 
         # aim瞄准绿色并向前探
-        self.aim(color=color,puppet=puppet)
+        x_off,y_off,z_off = self.aim(color=color,puppet=puppet)
 
         # 机械臂前伸
         # self.ik_caculator.run(step_list=[0.085,0,0],color=color,puppet=puppet)
@@ -171,7 +172,8 @@ class task_manager:
         self.arm_hw.gripper_control(gripper="close",puppet=puppet)
 
         # 机械臂后伸
-        self.ik_caculator.run(step_list=[0.055,0,0],color=color,puppet=puppet)
+        self.ik_caculator.run(step_list=[x_off-0.03,y_off,0],color=color,puppet=puppet)
+        # self.ik_caculator.run(step_list=[0.055,0,0],color=color,puppet=puppet)
         time.sleep(2.1)
 
         # 旋转压板
@@ -223,7 +225,7 @@ class task_manager:
     
     def test(self):
         # 运动到压板预瞄点
-        self.ik_caculator.run(color="green",puppet="left")
+        self.ik_caculator.run(color="green",puppet="right")
         #self.ik_caculator.run(color="green",puppet="right")
         time.sleep(3.2)
 
@@ -232,14 +234,24 @@ class task_manager:
         self.aim_dic['red'].clear()
         time.sleep(0.2)
         if color == 'green' and self.aim_dic['green']:
-            self.ik_caculator.run(step_list=[0.085,self.aim_dic[0],self.aim_dic[1]],color=color,puppet=puppet)
+            aim_x = self.aim_dic['green'][0]
+            aim_y = self.aim_dic['green'][1]
+            aim_z = self.aim_dic['green'][2]
+
+            y_off = -0.0002 * aim_x
+            z_off = 0.001 * aim_y - 0.07
+            x_off = 10/math.sqrt(aim_z)-0.02
+
+            self.ik_caculator.run(step_list=[x_off,y_off,0],color=color,puppet=puppet)
+            rospy.logwarn("*****y_off: %f *******",y_off)
             time.sleep(2.1)
+            return x_off,y_off,z_off
         elif color == 'red' and self.arm_dic['red']:
             self.ik_caculator.run(step_list=[0.085,self.aim_dic[0],self.aim_dic[1]],color=color,puppet=puppet)
             time.sleep(2.1)
         else:
             rospy.logwarn('aim green failed, aim list is empty')
-            return
+            return None
 
     def task_cmd_callback(self,msg):
         rospy.loginfo("Got cmd ros msg")
@@ -294,16 +306,19 @@ class task_manager:
             # 清除字典
             self.aim_dic['green'].clear()
             self.aim_dic['red'].clear()
-            green = data['green']
-            red = data['red']
+            color = data['color']
+            position = data['position']
 
             # 访问 JSON 字段示例
-            if  green:
-                self.aim_dic['green'].append(green['x'])
-                self.aim_dic['green'].append(green['y'])
-            if red:
-                self.aim_dic['red'].append(red['x'])
-                self.aim_dic['red'].append(red['y'])
+            if  color=='green':
+                self.aim_dic['green'].append(position['x'])
+                self.aim_dic['green'].append(position['y'])
+                self.aim_dic['green'].append(data['area'])
+
+            if color=='red':
+                self.aim_dic['red'].append(position['x'])
+                self.aim_dic['red'].append(position['y'])
+                self.aim_dic['red'].append(data['area'])
 
         except json.JSONDecodeError as e:
             rospy.logerr(f"Failed to decode JSON: {e}")
