@@ -26,6 +26,7 @@ class task_manager:
         self.cmd_sub = rospy.Subscriber("/task_cmd",String,self.task_cmd_callback)
         self.aim_sub = rospy.Subscriber("/detect_result",String,self.aim_callback)
         self.state_pub = rospy.Publisher('/task_states', String, queue_size=10)
+        self.aim_client = rospy.ServiceProxy('/example_service',example)
         self.cmd_type = None
         self.aim_dic = {'green':[],'red':[]}
         
@@ -100,6 +101,12 @@ class task_manager:
             if self.cmd_type == "right_grab_green" or self.cmd_type == "right_grab_red" \
             or self.cmd_type == "left_grab_green" or self.cmd_type == "left_grab_red" or self.cmd_type == "test":
                 result = map1.start_caculate()
+                
+            # 若检测结果异常，则结束后续流程
+            if result == False:
+                rospy.logerr('Detector failed, abord this cmd!')
+                self.task_state = "task_failed"
+                return False
 
             counter = 0
             while not rospy.is_shutdown() and map1.get_kps_flag is False:
@@ -150,16 +157,16 @@ class task_manager:
 
             # clear cmd_type
             self.cmd_type = None
-            rospy.loginfo("******* end *******") 
+            rospy.loginfo("******* end *******")
 
     def grab(self,color,puppet):
         # 运动到压板预瞄点
-        self.arm_hw.fold_arm(puppet=puppet)
+        self.arm_hw.fold_arm(gripper="open",puppet=puppet)
         self.ik_caculator.run(color=color,puppet=puppet)
         time.sleep(2.2)
         
-        # 打开夹爪
-        self.arm_hw.gripper_control(gripper="open",puppet=puppet)
+        # # 打开夹爪
+        # self.arm_hw.gripper_control(gripper="open",puppet=puppet)
 
         # aim瞄准绿色并向前探
         x_off,y_off,z_off = self.aim(color=color,puppet=puppet)
@@ -185,11 +192,11 @@ class task_manager:
         # 回到预瞄点
         self.ik_caculator.run(color=color,puppet=puppet)
         time.sleep(2.1)
-        self.arm_hw.fold_arm(puppet=puppet)
+        self.arm_hw.fold_arm(gripper="close",puppet=puppet)
 
     def put(self,color,puppet):
         # 运动到压板预瞄点
-        self.arm_hw.fold_arm(puppet=puppet)
+        self.arm_hw.fold_arm(gripper="open",puppet=puppet)
         self.ik_caculator.run(color=color,puppet=puppet)
         time.sleep(2.2)
         
@@ -221,7 +228,7 @@ class task_manager:
         # 回到预瞄点
         self.ik_caculator.run(color=color,puppet=puppet)
         time.sleep(2.1)
-        self.arm_hw.fold_arm(puppet=puppet)
+        self.arm_hw.fold_arm(gripper="close",puppet=puppet)
     
     def test(self):
         # 运动到压板预瞄点
@@ -229,26 +236,45 @@ class task_manager:
         #self.ik_caculator.run(color="green",puppet="right")
         time.sleep(3.2)
 
+    # 将aim色块中心坐标数值转换为机械臂坐标系下的三轴偏移
+    def aim_to_off(self,aim_x,aim_y,aim_z):
+        # 根据色块中心点得出三个轴的偏移量
+        z_off = 0.001 * aim_y - 0.07
+        x_off = 10/math.sqrt(aim_z)-0.02
+        # 由于y_off的尺度和深度是线性关系，所以需要对x_off做修正
+        y_off = -0.0002 * aim_x * x_off
+        return x_off,y_off,z_off
+    
+    # aim模块函数，该模块可以使用腕部的摄像头对颜色块进行瞄准
     def aim(self,color,puppet):
         self.aim_dic['green'].clear()
         self.aim_dic['red'].clear()
-        time.sleep(0.2)
+        
+        # TODO:call服务获取
+        rospy.wait_for_service('/example_service',rospy.Duration(5))
+        res = self.aim_client(color)
+        
+        time.sleep(0.5)
         if color == 'green' and self.aim_dic['green']:
             aim_x = self.aim_dic['green'][0]
             aim_y = self.aim_dic['green'][1]
             aim_z = self.aim_dic['green'][2]
-
-            y_off = -0.0002 * aim_x
-            z_off = 0.001 * aim_y - 0.07
-            x_off = 10/math.sqrt(aim_z)-0.02
-
+            # 获取三轴偏移
+            x_off,y_off,z_off = self.aim_to_off(aim_x,aim_y,aim_z)
             self.ik_caculator.run(step_list=[x_off,y_off,0],color=color,puppet=puppet)
-            rospy.logwarn("*****y_off: %f *******",y_off)
             time.sleep(2.1)
+            rospy.logwarn("*****y_off: %f *******",y_off)
             return x_off,y_off,z_off
         elif color == 'red' and self.arm_dic['red']:
-            self.ik_caculator.run(step_list=[0.085,self.aim_dic[0],self.aim_dic[1]],color=color,puppet=puppet)
+            aim_x = self.aim_dic['red'][0]
+            aim_y = self.aim_dic['red'][1]
+            aim_z = self.aim_dic['red'][2]
+            # 获取三轴偏移
+            x_off,y_off,z_off = self.aim_to_off(aim_x,aim_y,aim_z)
+            self.ik_caculator.run(step_list=[x_off,y_off,0],color=color,puppet=puppet)
             time.sleep(2.1)
+            rospy.logwarn("*****y_off: %f *******",y_off)
+            return x_off,y_off,z_off
         else:
             rospy.logwarn('aim green failed, aim list is empty')
             return None

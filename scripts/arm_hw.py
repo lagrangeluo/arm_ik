@@ -42,6 +42,20 @@ class arm_hw:
     else:
       return None
 
+  def change_gripper_value(self,gripper,puppet):
+    if gripper == "close":
+      # 关闭夹爪
+      if puppet=="right":
+        self.gripper_value = 0
+      elif puppet=="left":
+        self.left_gripper_value = 0
+    if gripper == "open":
+      # 打开夹爪
+      if puppet=="right":
+        self.gripper_value = 4.3
+      elif puppet=="left":
+        self.left_gripper_value = 4.3
+          
   def gripper_control(self,gripper,puppet="right"):
     if not bool(self.current_arm_state):
       rospy.logwarn("arm_hw: current arm state is None, abord gripper control")
@@ -54,19 +68,10 @@ class arm_hw:
       elif puppet=="left":
         cmd.position = [x for x in self.current_arm_left_state]
       
-      if gripper == "close":
-        # 关闭夹爪
-        if puppet=="right":
-          self.gripper_value = 0
-        elif puppet=="left":
-          self.left_gripper_value = 0
-      if gripper == "open":
-        # 打开夹爪
-        if puppet=="right":
-          self.gripper_value = 4.3
-        elif puppet=="left":
-          self.left_gripper_value = 4.3
+      # 改变夹爪数值全局变量
+      self.change_gripper_value(gripper,puppet)
       
+      # 弹出当前机械臂角度的夹爪数值，加入目标夹爪数值并执行函数
       cmd.position.pop()
       if puppet=="right":
         self.target_pose_callback(cmd)
@@ -93,7 +98,7 @@ class arm_hw:
       if puppet=="left":
         self.target_pose_left_callback(cmd)
       
-  def fold_arm(self,puppet):
+  def fold_arm(self,gripper,puppet):
     cmd = JointState()
     cmd.header.stamp = rospy.Time.now()
     cmd.name = ['joint0', 'joint1', 'joint2', 'joint3','joint4' ,'joint5','joint6']
@@ -102,6 +107,7 @@ class arm_hw:
     elif puppet=="left":
       cmd.position = [-0.8,0,0,0,0,0]
 
+    self.change_gripper_value(gripper,puppet)
     if puppet=="right":
       self.target_pose_callback(cmd)
     if puppet=="left":

@@ -213,8 +213,10 @@ class ik_caculator():
                     target_position[0]+=x*math.cos(theta) + y*math.sin(theta)
                     target_position[1]+=-x*math.sin(theta) + y*math.cos(theta)
                     target_position[2]+=step_list[2]
-                rospy.loginfo(f"target position: {target_position}")
-                
+        
+        # 对x轴进行补偿，越远补偿越多
+        target_position[0] += 0.02 * (target_position[0] - 0.2)/(0.4 - 0.2)
+        rospy.loginfo(f"target position: {target_position}")
 
         # 获取并断言 target_orientation 是一个 3x3 的矩阵
         if target_orientation is not None:

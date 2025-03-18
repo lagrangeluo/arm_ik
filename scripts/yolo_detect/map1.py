@@ -566,10 +566,10 @@ def start_caculate():
         print("kps: ",kps)
         kps = shrink_kps(kps,1.5)
         if kps==None:
-            # error_count=error_count+1
-            # if error_count>20:
-            #     rospy.loginfo("error count > 10,shuting down")
-            #     return False
+            error_count=error_count+1
+            if error_count>20:
+                rospy.loginfo("error count > 10,shuting down")
+                return False
             continue
         kps_plane = shrink_kps(kps,0.25)
 
