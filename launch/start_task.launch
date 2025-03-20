@@ -20,7 +20,7 @@
   <!-- <node name="hand_eye_tf" pkg="tf" type="static_transform_publisher" 
   args="-0.01 0.25 0.6 -0.624 0.671 -0.281 0.284 base_link camera_link 100" /> -->
   <node name="hand_eye_tf" pkg="tf" type="static_transform_publisher" 
-  args="-0.0 0.254 0.69 -0.624 0.671 -0.281 0.284 base_link camera_link 100" />
+  args="-0.02 0.254 0.69 -0.624 0.671 -0.281 0.284 base_link camera_link 100" />
 
   <!--手眼标定参数，左臂坐标 -->
   <node name="left_hand_eye_tf" pkg="tf" type="static_transform_publisher" 
@@ -32,7 +32,7 @@
 
   <!-- <node name="grab_step_tf" pkg="tf" type="static_transform_publisher" 
   args="0 0 0.06 0 0 0 0 grab_link grab_step_link 100" /> -->
-  
+
   <node
     name="robot_state_publisher"
     pkg="robot_state_publisher"

@@ -26,7 +26,7 @@ def listener():
     global pub
     pub = rospy.Publisher('/joint_states', JointState, queue_size=10)
     # 订阅自定义消息
-    rospy.Subscriber('/puppet/joint_right', JointState, callback_joint_msg)
+    rospy.Subscriber('/master/joint_right', JointState, callback_joint_msg)
     rospy.spin()
     
   

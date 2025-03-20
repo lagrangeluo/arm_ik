@@ -25,7 +25,7 @@ def pre_load_model(weidht_path):
     model.half()
     model.eval()
 
-def yolo_detect(frame,weidht_path):
+def yolo_detect(frame,weidht_path,conf_threshold):
     model = torch.load(weidht_path, map_location='cuda')['model'].float()
     stride = int(max(model.stride.cpu().numpy()))
 
@@ -63,45 +63,45 @@ def yolo_detect(frame,weidht_path):
     # Inference
     outputs = model(image)
     # NMS
-    outputs = util.non_max_suppression(outputs, 0.25, 0.7, model.head.nc)
+    outputs = util.non_max_suppression(outputs, conf_threshold, 0.7, model.head.nc)
+    output = outputs[0]
 
-    for output in outputs:
-        output = output.clone()
-        if len(output):
-            box_output = output[:, :6]
-            kps_output = output[:, 6:].view(len(output), *model.head.kpt_shape)
-        else:
-            box_output = output[:, :6]
-            kps_output = output[:, 6:]
+    if len(output):
+        box_output = output[:, :6]
+        kps_output = output[:, 6:].view(len(output), *model.head.kpt_shape)
+    else:
+        box_output = output[:, :6]
+        kps_output = output[:, 6:]
 
-        r = min(image.shape[2] / shape[0], image.shape[3] / shape[1])
+    r = min(image.shape[2] / shape[0], image.shape[3] / shape[1])
 
-        box_output[:, [0, 2]] -= (image.shape[3] - shape[1] * r) / 2  # x padding
-        box_output[:, [1, 3]] -= (image.shape[2] - shape[0] * r) / 2  # y padding
-        box_output[:, :4] /= r
+    box_output[:, [0, 2]] -= (image.shape[3] - shape[1] * r) / 2  # x padding
+    box_output[:, [1, 3]] -= (image.shape[2] - shape[0] * r) / 2  # y padding
+    box_output[:, :4] /= r
 
-        box_output[:, 0].clamp_(0, shape[1])  # x
-        box_output[:, 1].clamp_(0, shape[0])  # y
-        box_output[:, 2].clamp_(0, shape[1])  # x
-        box_output[:, 3].clamp_(0, shape[0])  # y
+    box_output[:, 0].clamp_(0, shape[1])  # x
+    box_output[:, 1].clamp_(0, shape[0])  # y
+    box_output[:, 2].clamp_(0, shape[1])  # x
+    box_output[:, 3].clamp_(0, shape[0])  # y
 
-        kps_output[..., 0] -= (image.shape[3] - shape[1] * r) / 2  # x padding
-        kps_output[..., 1] -= (image.shape[2] - shape[0] * r) / 2  # y padding
-        kps_output[..., 0] /= r
-        kps_output[..., 1] /= r
-        kps_output[..., 0].clamp_(0, shape[1])  # x
-        kps_output[..., 1].clamp_(0, shape[0])  # y
+    kps_output[..., 0] -= (image.shape[3] - shape[1] * r) / 2  # x padding
+    kps_output[..., 1] -= (image.shape[2] - shape[0] * r) / 2  # y padding
+    kps_output[..., 0] /= r
+    kps_output[..., 1] /= r
+    kps_output[..., 0].clamp_(0, shape[1])  # x
+    kps_output[..., 1].clamp_(0, shape[0])  # y
 
-        # for box in box_output:
-        #     box = box.cpu().numpy()
+    # for box in box_output:
+    #     box = box.cpu().numpy()
 
-        kps = []
-        for kpt in reversed(kps_output):
-            for i, k in enumerate(kpt):
-                x_coord, y_coord = k[0], k[1]
-                if x_coord % shape[1] != 0 and y_coord % shape[0] != 0:
-                    if len(k) == 3:
-                        conf = k[2]
-                        if conf > 0.5:
-                            kps.append([int(x_coord), int(y_coord)])
-    return kps
+    kps = []
+    for kpt in reversed(kps_output):
+        for i, k in enumerate(kpt):
+            x_coord, y_coord = k[0], k[1]
+            if x_coord % shape[1] != 0 and y_coord % shape[0] != 0:
+                if len(k) == 3:
+                    conf = k[2]
+                    if conf > 0.5:
+                        kps.append([int(x_coord), int(y_coord)])
+
+    return kps,box_output

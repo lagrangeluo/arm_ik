@@ -165,7 +165,7 @@ class ik_caculator():
             # z 轴的归一化坐标（如果需要的话）
             norm = np.linalg.norm(z_axis_camera_link_in_base_link)
             normalized_z_axis = z_axis_camera_link_in_base_link / norm
-            rospy.loginfo(f"{grab_link} z 轴在 {parent_link} 坐标系下的归一化坐标: {normalized_z_axis}")
+            #rospy.loginfo(f"{grab_link} z 轴在 {parent_link} 坐标系下的归一化坐标: {normalized_z_axis}")
             theta_radians = math.atan2(normalized_z_axis[1], normalized_z_axis[0])
             # 构造旋转矩阵
             R_z = np.array([
@@ -175,7 +175,7 @@ class ik_caculator():
             ])
             R_rotation = np.dot(R_z, self.Transfrom_Rotation_init)
             
-            return {"x":transform.transform.translation.x,"y":transform.transform.translation.y,"z":0.245,
+            return {"x":transform.transform.translation.x,"y":transform.transform.translation.y,"z":0.23,
                     "rotation":R_rotation,"theta":theta_radians}
             
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException):
@@ -187,7 +187,7 @@ class ik_caculator():
     # 若不指定position和orientation，则自动默认为初始位置的姿态角
     # step_list:[x,y,z]，该列表代表在原有坐标基础上是否要添加偏移量
     def run(self,target_position=None,target_orientation=None,step_list=None,color="green",puppet="right"):
-        
+        rospy.loginfo("Start plan arm")
         # 获取并断言 target_position
         if target_position is not None:
             # 断言 target_position 是一个列表
@@ -210,12 +210,18 @@ class ik_caculator():
                     theta = target_pose["theta"]
                     x = step_list[0]
                     y = step_list[1]
-                    target_position[0]+=x*math.cos(theta) + y*math.sin(theta)
-                    target_position[1]+=-x*math.sin(theta) + y*math.cos(theta)
+                    step_x = x*math.cos(theta) + y*math.sin(theta)
+                    step_y = x*math.sin(theta) - y*math.cos(theta)
+                    #rospy.logwarn(f'step_x: {step_x} step_y: {step_y}')
+                    target_position[0]+=step_x
+                    target_position[1]+=step_y
                     target_position[2]+=step_list[2]
         
         # 对x轴进行补偿，越远补偿越多
         target_position[0] += 0.02 * (target_position[0] - 0.2)/(0.4 - 0.2)
+        # zzhou
+        target_position[2] += 0.02 * (target_position[0] - 0.2)/(0.4 - 0.2)
+
         rospy.loginfo(f"target position: {target_position}")
 
         # 获取并断言 target_orientation 是一个 3x3 的矩阵
@@ -236,7 +242,7 @@ class ik_caculator():
         # 执行逆解并发布消息
         q = self.left_arm_chain.inverse_kinematics(target_position,target_orientation,'all')
         q = [round(a,3) for a in q]
-        rospy.loginfo(f"ik joint angle: {q}")
+        #rospy.loginfo(f"ik joint angle: {q}")
 
         self.joint_state.position = [q[1],q[2],q[3],q[4],q[5],q[6]]
         self.joint_state.header = Header()

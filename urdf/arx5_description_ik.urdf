@@ -83,7 +83,7 @@
         <parent link="fl_link1" />
         <child link="fl_link2" />
         <axis xyz="0 1 0" />
-        <limit lower="-0.05" upper="10" effort="100" velocity="1000" />
+        <limit lower="-0.05" upper="3.2" effort="100" velocity="1000" />
     </joint>
     <link name="fl_link3">
         <inertial>
@@ -112,7 +112,7 @@
         <parent link="fl_link2" />
         <child link="fl_link3" />
         <axis xyz="0 1 0" />
-        <limit lower="-0.05" upper="10" effort="100" velocity="1000" />
+        <limit lower="-0.05" upper="3.2" effort="100" velocity="1000" />
     </joint>
     <link name="fl_link4">
         <inertial>

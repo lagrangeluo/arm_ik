@@ -12,6 +12,7 @@ from std_msgs.msg import String
 from ik import ik_caculator
 from arm_hw import arm_hw
 from yolo_detect import map1
+from arm_ik.srv import ColorDetector
 
 class task_manager:
     def __init__(self,args):
@@ -26,7 +27,7 @@ class task_manager:
         self.cmd_sub = rospy.Subscriber("/task_cmd",String,self.task_cmd_callback)
         self.aim_sub = rospy.Subscriber("/detect_result",String,self.aim_callback)
         self.state_pub = rospy.Publisher('/task_states', String, queue_size=10)
-        self.aim_client = rospy.ServiceProxy('/example_service',example)
+        self.aim_client = rospy.ServiceProxy('/detect_color',ColorDetector)
         self.cmd_type = None
         self.aim_dic = {'green':[],'red':[]}
         
@@ -97,16 +98,20 @@ class task_manager:
                 self.arm_hw.gripper_control(gripper="close",puppet="left")
                 self.cmd_type = None
                 continue
-            
-            if self.cmd_type == "right_grab_green" or self.cmd_type == "right_grab_red" \
-            or self.cmd_type == "left_grab_green" or self.cmd_type == "left_grab_red" or self.cmd_type == "test":
-                result = map1.start_caculate()
+            elif self.cmd_type == "right_green" or self.cmd_type == "right_grab_red" or self.cmd_type == "right_put_red" \
+                or self.cmd_type == "left_green" or self.cmd_type == "left_grab_red" or self.cmd_type == "left_put_red" or self.cmd_type == "test":
+                result,class_id = map1.start_caculate(detect_count=4)
+                
+            else:
+                rospy.logerr(f"cmd type: {self.cmd_type} is invalid")
+                continue
                 
             # 若检测结果异常，则结束后续流程
             if result == False:
                 rospy.logerr('Detector failed, abord this cmd!')
-                self.task_state = "task_failed"
-                return False
+                self.cmd_type = None
+                # self.task_state = "idle"
+                continue
 
             counter = 0
             while not rospy.is_shutdown() and map1.get_kps_flag is False:
@@ -123,32 +128,37 @@ class task_manager:
             #     self.ik_caculator.init_arm()
             
             # right arm 
-            if self.cmd_type == "right_grab_green":
-                self.task_state = "run_grab_green"
-                self.grab(color="green",puppet="right")
+            if self.cmd_type == "right_green":
+                if class_id==1:
+                    self.task_state = "run_grab_green"
+                    self.grab(color="green",puppet="right")
+                if class_id==0:
+                    self.task_state = "run_put_green"
+                    self.put(color="green",puppet="right")
+
             elif self.cmd_type == "right_grab_red":
                 self.task_state = "run_grab_red"
                 self.grab(color="red",puppet="right")
-            elif self.cmd_type == "right_put_green":
-                self.task_state = "run_put_green"
-                self.put(color="green",puppet="right")
             elif self.cmd_type == "right_put_red":
                 self.task_state = "run_put_red"
                 self.put(color="red",puppet="right")
             
             # left arm
-            if self.cmd_type == "left_grab_green":
-                self.task_state = "run_grab_green"
-                self.grab(color="green",puppet="left")
+            if self.cmd_type == "left_green":
+                if class_id==1:
+                    self.task_state = "run_grab_green"
+                    self.grab(color="green",puppet="left")
+                if class_id==0:
+                    self.task_state = "run_put_green"
+                    self.put(color="green",puppet="left")
+
             elif self.cmd_type == "left_grab_red":
                 self.task_state = "run_grab_red"
                 self.grab(color="red",puppet="left")
-            elif self.cmd_type == "left_put_green":
-                self.task_state = "run_put_green"
-                self.put(color="green",puppet="left")
             elif self.cmd_type == "left_put_red":
                 self.task_state = "run_put_red"
                 self.put(color="red",puppet="left")
+
             elif self.cmd_type == "test":
                 self.test()
             
@@ -160,75 +170,128 @@ class task_manager:
             rospy.loginfo("******* end *******")
 
     def grab(self,color,puppet):
-        # 运动到压板预瞄点
+        
+        condition = False
         self.arm_hw.fold_arm(gripper="open",puppet=puppet)
-        self.ik_caculator.run(color=color,puppet=puppet)
-        time.sleep(2.2)
-        
-        # # 打开夹爪
-        # self.arm_hw.gripper_control(gripper="open",puppet=puppet)
 
-        # aim瞄准绿色并向前探
-        x_off,y_off,z_off = self.aim(color=color,puppet=puppet)
+        for i in range(10):
+            if condition:
+                break            
+            # 运动到压板预瞄点
+            self.arm_hw.stop_flag = False
+            self.arm_hw.aim_arm(gripper="open",puppet=puppet)
+            self.arm_hw.run_flag = True
+            self.ik_caculator.run(color=color,puppet=puppet)
+            start_position = self.ik_caculator.get_target_tcp(color,puppet)
+            
+            condition = True
+            while(self.arm_hw.run_flag == True and self.arm_hw.stop_flag == False):
+                rospy.loginfo("Start listening TF...")
+                map1.start_caculate(1)
+                current_position = self.ik_caculator.get_target_tcp(color,puppet)
+                if abs(current_position['x'] - start_position['x']) > 0.01 or\
+                    abs(current_position['y'] - start_position['y']) > 0.01:
+                    rospy.logerr("TF changed,abord ")
+                    self.arm_hw.stop_flag = True
+                    condition = False
+            if not condition:
+                continue
 
-        # 机械臂前伸
-        # self.ik_caculator.run(step_list=[0.085,0,0],color=color,puppet=puppet)
-        # time.sleep(2.1)
 
-        # 闭合夹爪
-        self.arm_hw.gripper_control(gripper="close",puppet=puppet)
+            # aim瞄准绿色并向前探
+            if not (self.call_aim(color,puppet)):
+                return False
+            x_off,y_off,z_off = self.aim(color=color,puppet=puppet)
 
-        # 机械臂后伸
-        self.ik_caculator.run(step_list=[x_off-0.03,y_off,0],color=color,puppet=puppet)
-        # self.ik_caculator.run(step_list=[0.055,0,0],color=color,puppet=puppet)
-        time.sleep(2.1)
+            # 闭合夹爪
+            condition = self.arm_hw.gripper_control(gripper="close",puppet=puppet)
+            if not condition:
+                continue
 
-        # 旋转压板
-        self.arm_hw.motor_add_control(joint=5,angle=-1.57,puppet=puppet)
+            # 机械臂后伸
+            self.ik_caculator.run(step_list=[x_off-0.03,y_off,0],color=color,puppet=puppet)
+            # self.ik_caculator.run(step_list=[0.055,0,0],color=color,puppet=puppet)
+            time.sleep(1.1)
 
-        # 打开夹爪
-        self.arm_hw.gripper_control(gripper="open",puppet=puppet)
-        
-        # 回到预瞄点
-        self.ik_caculator.run(color=color,puppet=puppet)
-        time.sleep(2.1)
-        self.arm_hw.fold_arm(gripper="close",puppet=puppet)
+            # 旋转压板
+            self.arm_hw.motor_add_control(joint=5,angle=-1.57,puppet=puppet)
+
+            # 打开夹爪
+            self.arm_hw.gripper_control(gripper="open",puppet=puppet)
+            
+            # 回到预瞄点
+            self.arm_hw.run_flag = True
+            self.ik_caculator.run(color=color,puppet=puppet)
+            while(self.arm_hw.run_flag == True):
+                time.sleep(0.1)
+
+            self.arm_hw.fold_arm(gripper="close",puppet=puppet)
 
     def put(self,color,puppet):
-        # 运动到压板预瞄点
+
+        condition = False
         self.arm_hw.fold_arm(gripper="open",puppet=puppet)
-        self.ik_caculator.run(color=color,puppet=puppet)
-        time.sleep(2.2)
-        
-        # 打开夹爪
-        self.arm_hw.gripper_control(gripper="open",puppet=puppet)
 
-        # 旋转压板
-        self.arm_hw.motor_add_control(joint=5,angle=-1.57,puppet=puppet)
+        for i in range(10):
+            if condition:
+                break            
+            # 运动到压板预瞄点
+            self.arm_hw.stop_flag = False
+            self.arm_hw.aim_arm(gripper="open",puppet=puppet)
+            self.arm_hw.run_flag = True
+            self.ik_caculator.run(color=color,puppet=puppet)
+            start_position = self.ik_caculator.get_target_tcp(color,puppet)
 
-        # 机械臂前伸
-        self.arm_hw.lock_rotation_flag=True
-        self.ik_caculator.run(step_list=[0.08,0,0],color=color,puppet=puppet)
-        time.sleep(2.1)
+            condition = True
+            while(self.arm_hw.run_flag == True and self.arm_hw.stop_flag == False):
+                rospy.loginfo("Start listening TF...")
+                map1.start_caculate(1)
+                current_position = self.ik_caculator.get_target_tcp(color,puppet)
+                if abs(current_position['x'] - start_position['x']) > 0.01 or\
+                    abs(current_position['y'] - start_position['y']) > 0.01:
+                    rospy.logerr("TF changed,abord ")
+                    self.arm_hw.stop_flag = True
+                    condition = False
+                    #time.sleep(5)
+            if not condition:
+                continue
 
-        # 闭合夹爪
-        self.arm_hw.gripper_control(gripper="close",puppet=puppet)
 
-        # 机械臂后伸
-        self.arm_hw.lock_rotation_flag=True
-        self.ik_caculator.run(step_list=[0.045,0,0],color=color,puppet=puppet)
-        time.sleep(2.1)
+            if not (self.call_aim(color,puppet)):
+                return False
+            # 旋转压板
+            self.arm_hw.motor_add_control(joint=5,angle=-1.57,puppet=puppet)
 
-        # 旋转压板
-        self.arm_hw.motor_add_control(joint=5,angle=1.57,puppet=puppet)
+            # 机械臂前伸
+            self.arm_hw.lock_rotation_flag=True
+            # aim瞄准绿色并向前探
+            x_off,y_off,z_off = self.aim(color=color,puppet=puppet)
 
-        # 打开夹爪
-        self.arm_hw.gripper_control(gripper="open",puppet=puppet)
-        
-        # 回到预瞄点
-        self.ik_caculator.run(color=color,puppet=puppet)
-        time.sleep(2.1)
-        self.arm_hw.fold_arm(gripper="close",puppet=puppet)
+            # 闭合夹爪
+            condition = self.arm_hw.gripper_control(gripper="close",puppet=puppet)
+            if not condition:
+                continue
+
+            # 机械臂后伸
+            self.arm_hw.lock_rotation_flag=True
+            self.ik_caculator.run(step_list=[x_off-0.03,y_off,0],color=color,puppet=puppet)
+            time.sleep(2.1)
+
+            # 旋转压板
+            if puppet=='right':
+                self.arm_hw.motor_add_control(joint=5,angle=1.6,puppet=puppet)
+            if puppet=='left':
+                self.arm_hw.motor_add_control(joint=5,angle=1.57,puppet=puppet)
+
+            # 打开夹爪
+            self.arm_hw.gripper_control(gripper="open",puppet=puppet)
+            
+            # 回到预瞄点
+            self.arm_hw.run_flag = True
+            self.ik_caculator.run(color=color,puppet=puppet)
+            while(self.arm_hw.run_flag == True):
+                time.sleep(0.1)
+            self.arm_hw.fold_arm(gripper="close",puppet=puppet)
     
     def test(self):
         # 运动到压板预瞄点
@@ -236,44 +299,65 @@ class task_manager:
         #self.ik_caculator.run(color="green",puppet="right")
         time.sleep(3.2)
 
+    def call_aim(self,color,puppet):
+        # TODO:call服务获取
+        rospy.wait_for_service('/detect_color',rospy.Duration(5))
+        self.aim_dic['green'].clear()
+        self.aim_dic['red'].clear()
+
+        if puppet=='right':
+            camera_topic = '/camera_r/color/image_raw'
+        elif puppet=='left':
+            camera_topic = '/camera_l/color/image_raw'
+        
+        res = self.aim_client(camera_topic,color)
+
+        if res is not None:
+            self.aim_dic[color].append(res.x)
+            self.aim_dic[color].append(res.y)
+            self.aim_dic[color].append(res.area)
+            return True
+        else:
+            rospy.logerr("aim failed")
+            return False
+
     # 将aim色块中心坐标数值转换为机械臂坐标系下的三轴偏移
     def aim_to_off(self,aim_x,aim_y,aim_z):
         # 根据色块中心点得出三个轴的偏移量
         z_off = 0.001 * aim_y - 0.07
-        x_off = 10/math.sqrt(aim_z)-0.02
+        x_off = 10/math.sqrt(aim_z)-0.03
         # 由于y_off的尺度和深度是线性关系，所以需要对x_off做修正
-        y_off = -0.0002 * aim_x * x_off
+        # TODO: check math later
+        y_off = 0.005 * aim_x * x_off
         return x_off,y_off,z_off
     
     # aim模块函数，该模块可以使用腕部的摄像头对颜色块进行瞄准
     def aim(self,color,puppet):
-        self.aim_dic['green'].clear()
-        self.aim_dic['red'].clear()
+
+        rospy.loginfo("Start aim module")
         
-        # TODO:call服务获取
-        rospy.wait_for_service('/example_service',rospy.Duration(5))
-        res = self.aim_client(color)
-        
-        time.sleep(0.5)
         if color == 'green' and self.aim_dic['green']:
             aim_x = self.aim_dic['green'][0]
             aim_y = self.aim_dic['green'][1]
             aim_z = self.aim_dic['green'][2]
             # 获取三轴偏移
             x_off,y_off,z_off = self.aim_to_off(aim_x,aim_y,aim_z)
-            self.ik_caculator.run(step_list=[x_off,y_off,0],color=color,puppet=puppet)
-            time.sleep(2.1)
-            rospy.logwarn("*****y_off: %f *******",y_off)
+            self.arm_hw.run_flag = True
+            self.ik_caculator.run(step_list=[0.085,y_off,0],color=color,puppet=puppet)
+            while(self.arm_hw.run_flag == True):
+                time.sleep(0.1)
+
             return x_off,y_off,z_off
-        elif color == 'red' and self.arm_dic['red']:
+        elif color == 'red' and self.aim_dic['red']:
             aim_x = self.aim_dic['red'][0]
             aim_y = self.aim_dic['red'][1]
             aim_z = self.aim_dic['red'][2]
             # 获取三轴偏移
             x_off,y_off,z_off = self.aim_to_off(aim_x,aim_y,aim_z)
-            self.ik_caculator.run(step_list=[x_off,y_off,0],color=color,puppet=puppet)
-            time.sleep(2.1)
-            rospy.logwarn("*****y_off: %f *******",y_off)
+            self.arm_hw.run_flag = True
+            self.ik_caculator.run(step_list=[0.085,y_off,0],color=color,puppet=puppet)
+            while(self.arm_hw.run_flag == True):
+                time.sleep(0.1)
             return x_off,y_off,z_off
         else:
             rospy.logwarn('aim green failed, aim list is empty')
@@ -281,11 +365,8 @@ class task_manager:
 
     def task_cmd_callback(self,msg):
         rospy.loginfo("Got cmd ros msg")
-        if msg.data == "right_grab_green":
-            self.cmd_type = "right_grab_green"
-        
-        elif msg.data == "right_put_green":
-            self.cmd_type = "right_put_green"
+        if msg.data == "right_grab_green" or msg.data == "right_put_green":
+            self.cmd_type = "right_green"
         
         elif msg.data == "right_grab_red":
             self.cmd_type = "right_grab_red"
@@ -293,11 +374,8 @@ class task_manager:
         elif msg.data == "right_put_red":
             self.cmd_type = "right_put_red"
 
-        elif msg.data == "left_grab_green":
-            self.cmd_type = "left_grab_green"
-        
-        elif msg.data == "left_put_green":
-            self.cmd_type = "left_put_green"
+        elif msg.data == "left_grab_green" or msg.data == "left_put_green":
+            self.cmd_type = "left_green"
         
         elif msg.data == "left_grab_red":
             self.cmd_type = "left_grab_red"

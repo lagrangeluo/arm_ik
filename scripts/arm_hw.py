@@ -33,7 +33,12 @@ class arm_hw:
     self.joint_pub_rate = 200
     
     # response time for one execute time for arm, arm will move to target pose in this seconds
-    self.response_time = 2
+    self.response_time = 1
+
+    # stop flag
+    self.stop_flag = False
+    self.run_flag = False
+
 
   # get current arm joint angle
   def get_current_arm_state(self):
@@ -57,6 +62,7 @@ class arm_hw:
         self.left_gripper_value = 4.3
           
   def gripper_control(self,gripper,puppet="right"):
+    rospy.loginfo(f"start {gripper} gripper")
     if not bool(self.current_arm_state):
       rospy.logwarn("arm_hw: current arm state is None, abord gripper control")
     else:
@@ -70,7 +76,7 @@ class arm_hw:
       
       # 改变夹爪数值全局变量
       self.change_gripper_value(gripper,puppet)
-      
+
       # 弹出当前机械臂角度的夹爪数值，加入目标夹爪数值并执行函数
       cmd.position.pop()
       if puppet=="right":
@@ -78,6 +84,10 @@ class arm_hw:
       if puppet=="left":
         self.target_pose_left_callback(cmd)
 
+      effort_joint_angle = self.get_current_arm_state()[-1]
+      # rospy.logwarn(f"*********joint  angle: {effort_joint_angle}")
+
+      return True if effort_joint_angle > 0.5 else False
       
   def motor_add_control(self,joint,angle,puppet):
     if not bool(self.current_arm_state):
@@ -98,7 +108,24 @@ class arm_hw:
       if puppet=="left":
         self.target_pose_left_callback(cmd)
       
+  def aim_arm(self,gripper,puppet):
+    rospy.loginfo("Starting aim arm")
+    cmd = JointState()
+    cmd.header.stamp = rospy.Time.now()
+    cmd.name = ['joint0', 'joint1', 'joint2', 'joint3','joint4' ,'joint5','joint6']
+    if puppet=="right":
+      cmd.position = [1.329, 1.772, 0.83, 1.077, 1.367, 0]
+    elif puppet=="left":
+      cmd.position = [-1.329, 1.772, 0.83, 1.077, -1.367, 0]
+
+    self.change_gripper_value(gripper,puppet)
+    if puppet=="right":
+      self.target_pose_callback(cmd)
+    if puppet=="left":
+      self.target_pose_left_callback(cmd)
+
   def fold_arm(self,gripper,puppet):
+    rospy.loginfo("Starting fold arm")
     cmd = JointState()
     cmd.header.stamp = rospy.Time.now()
     cmd.name = ['joint0', 'joint1', 'joint2', 'joint3','joint4' ,'joint5','joint6']
@@ -143,7 +170,14 @@ class arm_hw:
       joint_step = [a/joint_cut_num for a in joint_interval_list]
       #print("Got joint step: ",joint_step)
       
+      self.run_flag = True
+
       for i in range(0,joint_cut_num):
+        if self.stop_flag == True:
+          rospy.logerr("stop arm cmd")
+          self.stop_flag = False
+          self.run_flag = False
+          return
         
         cmd = JointState()
         cmd.header.stamp = rospy.Time.now()
@@ -156,6 +190,7 @@ class arm_hw:
         
         time.sleep(self.joint_interval)
         #time.sleep(0.05)
+      self.run_flag = False
       
   def target_pose_left_callback(self,msg):
 
@@ -188,6 +223,10 @@ class arm_hw:
       #print("Got joint step: ",joint_step)
       
       for i in range(0,joint_cut_num):
+        if self.stop_flag == True:
+          self.stop_flag = False
+          self.run_flag = False
+          return
         
         cmd = JointState()
         cmd.header.stamp = rospy.Time.now()
@@ -195,11 +234,14 @@ class arm_hw:
         cmd.position = [i*a + b for a,b in zip(joint_step,arm_start_angle)]
         cmd.position = [round(x,3) for x in cmd.position]
         #cmd.position = [0,0,0,0,0,0,0]
-        
+
         self.cmd_left_pub.publish(cmd)
         
         time.sleep(self.joint_interval)
         #time.sleep(0.05)
+      
+      self.run_flag = False
+
 
   def arm_state_callback(self,msg):
     self.arm_state_update_flag=False

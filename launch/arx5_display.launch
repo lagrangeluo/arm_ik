@@ -3,7 +3,7 @@
     name="model" />
   <param
     name="robot_description"
-    textfile="$(find arx5_description)/urdf/arx5_description_ik.urdf" />
+    textfile="$(find arm_ik)/urdf/arx5_description_ik.urdf" />
     
   <!--node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher">
       <rosparam param="source_list">[/puppet/joint_right]</rosparam>

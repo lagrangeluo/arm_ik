@@ -516,7 +516,7 @@ transfrom_global = None
 transform_grab_globa = None
 marker_global = None
 
-def start_caculate():
+def start_caculate(detect_count):
     global get_kps_flag,rgb_img,point_img
     global transfrom_global,transform_grab_globa,marker_global
     rgb_img = None
@@ -524,7 +524,7 @@ def start_caculate():
     rospy.loginfo("waiting for rgb img")
     while not rospy.is_shutdown() and (rgb_img is None or point_img is None):  
         time.sleep(1)
-        print("rgb_img type: ",type(rgb_img)," point type: ",type(point_img))
+        #print("rgb_img type: ",type(rgb_img)," point type: ",type(point_img))
         if(ros_event.is_set()):
             rospy.loginfo("shuting down")
             return False
@@ -555,27 +555,44 @@ def start_caculate():
     center_list = []
     normal_list = []
     error_count = 0
-    while not rospy.is_shutdown() and len(center_list) < 6:
+    while not rospy.is_shutdown() and len(center_list) < detect_count:
         # YOLO检测关键点 (2D坐标)
         #cv2.imshow("raw pic",frame)
         frame = rgb_img_deque.pop()
-        kps = yolo_detect(frame, './yolo_detect/weights/110.pt')  # 示例返回 [(x1, y1), ...]
-        # visualize
+        yolo_start_time = time.time()
+        zhan_wei_zi_fu, box = yolo_detect(frame, './yolo_detect/weights/80.pt',0.5)        # visualize
         visualize_frame = np.copy(frame)
-        mark_kps_on_image(visualize_frame,kps,'./result.jpg')
-        print("kps: ",kps)
-        kps = shrink_kps(kps,1.5)
-        if kps==None:
+        yolo_end_time = time.time()
+        print(f" yolo caculate cost time: {yolo_end_time-yolo_start_time:.6f} sec")
+
+        if box.shape[0] == 0:
             error_count=error_count+1
             if error_count>20:
                 rospy.loginfo("error count > 10,shuting down")
-                return False
+                return False,None
             continue
-        kps_plane = shrink_kps(kps,0.25)
+        # print("kps: ",kps)
+        # kps = shrink_kps(kps,1.5)
+        # if kps==None:
 
-        #/camera_f/depth/color/points
         # 加载点云
         pcd = point_img_deque.pop()
+        #kps_plane = shrink_kps(kps,0.25)
+        x1, y1, x2, y2, score, class_id = box[0].cpu().numpy()
+        class_id = int(class_id)
+        x_center = (x1+x2)/2
+        y_center = (y1+y2)/2
+        kps = [[x1,y1],[x1,y2],[x2,y1],[x2,y2]]
+        kps_plane = shrink_kps(kps, 0.7) # 得到机柜平面上的四个点
+        kps_center = [(x_center,y_center)] # 得到按钮中心点
+
+        kps_plane_3d = map_2d_to_3d_kdtree(kps_plane, pcd, fx, fy, cx, cy, k=3) #机柜平面上的四个点映射到3D空间
+        plane_center = map_2d_to_3d_kdtree(kps_center, pcd, fx, fy, cx, cy, k=3) #按钮中心点映射到3D空间
+
+        #mark_kps_on_image(visualize_frame,kps,'./result.jpg')
+
+        #/camera_f/depth/color/points
+
         #pcd = o3d.io.read_point_cloud(pcd_path,
         #                          remove_nan_points=True,
         #                            remove_infinite_points=True)
@@ -588,7 +605,7 @@ def start_caculate():
 
         # 将2D关键点映射到3D
         kps_3d = map_2d_to_3d_kdtree(kps, pcd, fx, fy, cx, cy, k=3)
-        kps_plane_3d = map_2d_to_3d_kdtree(kps_plane, pcd, fx, fy, cx, cy, k=3)
+        # kps_plane_3d = map_2d_to_3d_kdtree(kps_plane, pcd, fx, fy, cx, cy, k=3)
         # is_coplanar = are_points_coplanar(kps_3d, threshold=0.003)
         is_coplanar = are_points_coplanar(kps_plane_3d, threshold=0.003)
 
@@ -603,7 +620,7 @@ def start_caculate():
         plane_normal = get_plane_normal(plane_params)
         kps_3d  = np.array(kps_3d)
     
-        plane_center = kps_3d.mean(axis=0)  # 平面中心设置为关键点质心
+        # plane_center = kps_3d.mean(axis=0)  # 平面中心设置为关键点质心
         center_list.append(plane_center)
         normal_list.append(plane_normal)
 
@@ -611,7 +628,7 @@ def start_caculate():
     normal_array = np.array(normal_list)
     plane_center_mean = plane_center_array.mean(axis=0)
     normal_mean = normal_array.mean(axis=0)
-    robot_point = move_point_along_normal(plane_center_mean, normal_mean, 0.02)
+    robot_point = move_point_along_normal(plane_center_mean, normal_mean, 0.02)[0]
 
     # test wrong param
     # kps_3d_color = map_2d_to_3d_kdtree(kps, pcd, fx_color, fy_color, cx_color, cy_color, k=3)
@@ -619,13 +636,12 @@ def start_caculate():
     # plane_center_color = kps_3d_color.mean(axis=0)
     # robot_point = plane_center_color   #robot_point = plane_center
     end_time = time.time()
-    print("法向量 (nx, ny, nz):", plane_normal)
-    print("x,y,z: ",robot_point)
-    print(f"caculate cost time: {end_time-start_time:.6f} sec")
+    # print("法向量 (nx, ny, nz):", plane_normal)
+    # print("x,y,z: ",robot_point)
+    print(f" map1 caculate cost time: {end_time-start_time:.6f} sec")
     qua = compute_quaternion_from_normal(plane_normal[0],plane_normal[1],plane_normal[2])
-    print("*******qua********: ",qua)
 
-    save_data(rgb_img,point_img,kps,kps_3d,plane_center,plane_normal)
+    #save_data(rgb_img,point_img,kps,kps_3d,plane_center,plane_normal)
 
     # 设置Transform消息
     transform = TransformStamped()
@@ -743,8 +759,8 @@ def start_caculate():
         marker_global = marker_array
 
         # wait for tf to be published
-        time.sleep(0.2)
-        return True
+        #time.sleep(0.1)
+        return True,class_id
 
 
 def pub_tf_thread():
@@ -778,11 +794,11 @@ ros_thread = Thread(target=pub_tf_thread)
 def start_rgb_detector():
     global rgb_sub,point_sub,marker_pub
     rospy.loginfo("Start yolo detect node")
-    rgb_sub = rospy.Subscriber("/camera_f/color/image_raw",Image,image_callback)
-    point_sub = rospy.Subscriber("/camera_f/depth/points", PointCloud2, point_cloud_callback)
+    rgb_sub = rospy.Subscriber("/camera_d/color/image_raw",Image,image_callback)
+    point_sub = rospy.Subscriber("/camera_d/depth/points", PointCloud2, point_cloud_callback)
     marker_pub = rospy.Publisher('visualization_marker_array', MarkerArray, queue_size=10)
     ros_thread.start()
-    pre_load_model('./yolo_detect/weights/110.pt')
+    pre_load_model('./yolo_detect/weights/80.pt')
     
 def signal_handler(signal,frame):
     ros_event.set()
@@ -793,9 +809,9 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT,signal_handler)
     rospy.init_node("yolo_detect")
     rospy.loginfo("Start yolo detect node")
-    rgb_sub = rospy.Subscriber("/camera_f/color/image_raw",Image,image_callback)
-    point_sub = rospy.Subscriber("/camera_f/depth/points", PointCloud2, point_cloud_callback)
+    rgb_sub = rospy.Subscriber("/camera_d/color/image_raw",Image,image_callback)
+    point_sub = rospy.Subscriber("/camera_d/depth/points", PointCloud2, point_cloud_callback)
     marker_pub = rospy.Publisher('visualization_marker_array', MarkerArray, queue_size=10)
-    #depth_sub = rospy.Subscriber("/camera_f/depth/image_rect_raw",Image,depth_callback)
+    #depth_sub = rospy.Subscriber("/camera_d/depth/image_rect_raw",Image,depth_callback)
     ros_thread.start()
     rospy.spin()
