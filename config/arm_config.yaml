@@ -1,0 +1,129 @@
+# 机械臂配置参数
+arm:
+  # 网络配置
+  network:
+    ip: "192.168.0.162"
+    port: 56322
+    hand_port: 56422
+  
+  # 关节配置
+  joints:
+    left_arm:
+      - name: "idx12_left_arm_joint1"
+        limit: [-6.28, 6.28]
+        default: 0.0
+      - name: "idx13_left_arm_joint2"
+        limit: [-1.570, 0.785]
+        default: 0.0
+      - name: "idx14_left_arm_joint3"
+        limit: [-6.28, 6.28]
+        default: 0.0
+      - name: "idx15_left_arm_joint4"
+        limit: [-2.530, 0.523]
+        default: 0.0
+      - name: "idx16_left_arm_joint5"
+        limit: [-6.283, 6.283]
+        default: 0.0
+      - name: "idx17_left_arm_joint6"
+        limit: [-1.570, 1.570]
+        default: 0.0
+      - name: "idx18_left_arm_joint7"
+        limit: [-6.283, 6.283]
+        default: 0.0
+    
+    right_arm:
+      - name: "idx19_right_arm_joint1"
+        limit: [-6.28, 6.28]
+        default: 0.0
+      - name: "idx20_right_arm_joint2"
+        limit: [-1.570, 0.785]
+        default: 0.0
+      - name: "idx21_right_arm_joint3"
+        limit: [-6.28, 6.28]
+        default: 0.0
+      - name: "idx22_right_arm_joint4"
+        limit: [-2.530, 0.523]
+        default: 0.0
+      - name: "idx23_right_arm_joint5"
+        limit: [-6.283, 6.283]
+        default: 0.0
+      - name: "idx24_right_arm_joint6"
+        limit: [-1.570, 1.570]
+        default: 0.0
+      - name: "idx25_right_arm_joint7"
+        limit: [-6.283, 6.283]
+        default: 0.0
+    
+    head:
+      - name: "idx11_head_joint"
+        limit: [-1.02, 1.02]
+        default: 0.0
+    
+    waist:
+      lift:
+        - name: "idx09_lift_joint"
+          limit: [-0.265, 0.265]
+          default: 0.0
+      pitch:
+        - name: "idx10_waist_joint"
+          limit: [0.053, 1.55]
+          default: 0.0
+
+  # 动作配置
+  actions:
+    default: "PLANNING_MOVE"
+    available:
+      - "PLANNING_MOVE"
+      - "FREE_MOVE"
+      - "STOP"
+  
+  # 运动参数
+  motion:
+    timer_period: 0.03
+    max_velocity: 1.0
+    acceleration: 0.5
+  
+  # 夹爪配置
+  gripper:
+    default_position: [0, 0]
+    max_position: 100
+    min_position: 0
+
+# 颜色检测配置
+color_detection:
+  min_area: 3000
+  rect_ratio: 0.85
+  resize_width: 640
+  blur_kernel_size: 5
+  morph_kernel_size: 5
+  
+  colors:
+    red:
+      ranges:
+        - lower: [0, 120, 50]
+          upper: [10, 255, 255]
+        - lower: [170, 120, 50]
+          upper: [180, 255, 255]
+      bgr: [0, 0, 255]
+    
+    green:
+      ranges:
+        - lower: [35, 120, 50]
+          upper: [85, 255, 255]
+      bgr: [0, 255, 0]
+  
+  rect_filter:
+    width_range: [50, 160]
+    height_range: [50, 160]
+  
+  save:
+    base_dir: "./color_detection_results"
+    json_filename: "detection_results.json"
+    image_prefix: "detection_"
+
+# 系统配置
+system:
+  debug_mode: true
+  log_level: "INFO"
+  data_dir: "./data"
+  visualization_dir: "visualization_steps" 
