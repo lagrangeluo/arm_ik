@@ -87,8 +87,8 @@ class AGI_CONFIG():
     self.right_init_tcp =  {"pos": {"x": 0.8005, "y": -0.244, "z": 1.1775},\
                            "ori": {"roll": np.pi, "pitch": -np.pi/2, "yaw": 0}}
     # x y z qx qy qz qw
-    self.left_tool_tcp = {0, 0, 0.2, 0, 0, -0.707, 0.707}
-    self.right_tool_tcp = {0, 0, 0.2, 0, 0, 0.707, 0.707}
+    self.left_tool_tcp = [0, 0, 0.2, 0, 0, -0.707, 0.707]
+    self.right_tool_tcp = [0, 0, 0.2, 0, 0, 0.707, 0.707]
 
 class arm_hw(Node):
   def __init__(self,name="agi_arm_hw"):
@@ -97,7 +97,7 @@ class arm_hw(Node):
     parser = argparse.ArgumentParser()
     parser.add_argument("--collect_data", type=bool, default=False, help="collect data mode")
     parser.add_argument("--tcp_in_joint", type=bool, default=False, help="tcp merge into joint_state mode")
-    parser.add_argument("--arm_state_enable", type=bool, default=False, help="turn on or turn off arm state feedback")
+    parser.add_argument("--arm_state_enable", type=bool, default=True, help="turn on or turn off arm state feedback")
     self.args = parser.parse_args()
 
     # 网络配置 - 从配置文件或环境变量获取
@@ -127,10 +127,10 @@ class arm_hw(Node):
 
     # 定时器：0.5秒周期调用
     if self.args.arm_state_enable:
-        timer_period = 0.05
+        timer_period = 0.2
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
-    self.left_arm_flag = False
+    self.arm_running_flag = False
 
     # 订阅左臂和右臂的坐标控制指令
     # 使用标准的ROS2 PoseStamped消息类型
@@ -145,6 +145,20 @@ class arm_hw(Node):
         PoseStamped,
         '/agi_hw/right_arm_target_pose',
         self.right_arm_pose_callback,
+        10
+    )
+
+    # 新增：订阅左臂和右臂的关节空间控制指令
+    self.left_arm_joint_sub = self.create_subscription(
+        Float64MultiArray,
+        '/agi_hw/left_arm_joint_cmd',
+        self.left_arm_joint_callback,
+        10
+    )
+    self.right_arm_joint_sub = self.create_subscription(
+        Float64MultiArray,
+        '/agi_hw/right_arm_joint_cmd',
+        self.right_arm_joint_callback,
         10
     )
 
@@ -244,7 +258,7 @@ class arm_hw(Node):
     right_pose.header.frame_id = "base_link"
     right_pose.pose.position.x = right_tcp[0]
     right_pose.pose.position.y = right_tcp[1]
-    right_pose.pose.position.z = right_tcp[2] + 0.2
+    right_pose.pose.position.z = right_tcp[2]
     # right_pose.pose.orientation.x = -0.5
     # right_pose.pose.orientation.y = 0.5
     # right_pose.pose.orientation.z = -0.5
@@ -307,25 +321,25 @@ class arm_hw(Node):
         left_msg = PoseStamped()
         left_msg.header.stamp = self.get_clock().now().to_msg()
         left_msg.header.frame_id = "base_link"
-        left_msg.pose.position.x = tool_pos[0]
-        left_msg.pose.position.y = tool_pos[1]
-        left_msg.pose.position.z = tool_pos[2]
-        left_msg.pose.orientation.x = q[0]
-        left_msg.pose.orientation.y = q[1]
-        left_msg.pose.orientation.z = q[2]
-        left_msg.pose.orientation.w = q[3]
+        left_msg.pose.position.x = left_tcp_pos[0]
+        left_msg.pose.position.y = left_tcp_pos[1]
+        left_msg.pose.position.z = left_tcp_pos[2]
+        left_msg.pose.orientation.x = left_tcp_ori[0]
+        left_msg.pose.orientation.y = left_tcp_ori[1]
+        left_msg.pose.orientation.z = left_tcp_ori[2]
+        left_msg.pose.orientation.w = left_tcp_ori[3]
         self.left_tcp_pub.publish(left_msg)
       # --- 右臂 ---
         right_msg = PoseStamped()
         right_msg.header.stamp = self.get_clock().now().to_msg()
         right_msg.header.frame_id = "base_link"
-        right_msg.pose.position.x = tool_pos[0]
-        right_msg.pose.position.y = tool_pos[1]
-        right_msg.pose.position.z = tool_pos[2]
-        right_msg.pose.orientation.x = q[0]
-        right_msg.pose.orientation.y = q[1]
-        right_msg.pose.orientation.z = q[2]
-        right_msg.pose.orientation.w = q[3]
+        right_msg.pose.position.x = right_tcp_pos[0]
+        right_msg.pose.position.y = right_tcp_pos[1]
+        right_msg.pose.position.z = right_tcp_pos[2]
+        right_msg.pose.orientation.x = right_tcp_ori[0]
+        right_msg.pose.orientation.y = right_tcp_ori[1]
+        right_msg.pose.orientation.z = right_tcp_ori[2]
+        right_msg.pose.orientation.w = right_tcp_ori[3]
         self.right_tcp_pub.publish(right_msg)
 
     except Exception as e:
@@ -531,7 +545,59 @@ class arm_hw(Node):
 
       response = requests.post(url, headers=headers, json=payload)
       return response
-  
+
+  def planning_move(self, arm_choice, left_pos, left_ori, right_pos, right_ori, ip=None, port=None):
+      # 使用类成员变量作为默认值
+      if ip is None:
+          ip = self.server_ip
+      if port is None:
+          port = self.server_port
+        
+      url = f"http://{ip}:{port}/rpc/aimdk.protocol.McMotionService/PlanningMove"
+      headers = {"Content-Type": "application/json"}
+
+      if arm_choice == 'left':
+          payload = {
+          "group": "McPlanningGroup_LEFT_ARM",
+          "target": {
+                "type": "SE3",
+                "left": {
+                    "position": left_pos,
+                    "orientation": left_ori
+                }
+              }
+          }
+      elif arm_choice == 'right':
+          payload = {
+          "group": "McPlanningGroup_RIGHT_ARM",
+          "target": {
+              "type": "SE3",
+              "right": {
+                  "position": right_pos,
+                  "orientation": right_ori
+                  }
+              }
+          }
+      elif arm_choice == 'dual':
+          payload = {
+          "group": "McPlanningGroup_DUAL_ARM",
+          "target": {
+              "type": "SE3",
+              "left": {
+                  "position": left_pos,
+                  "orientation": left_ori
+              },
+              "right": {
+                  "position": right_pos,
+                  "orientation": right_ori
+              }
+          }
+      }
+      else:
+          print("wrong arm cmd!")
+      response = requests.post(url, headers=headers, json=payload)
+      return response
+
   # 控制腰关节和升降关节运动
   # 示例：
   # move_waist_lift_head(lift_angle=0.05, pitch_angle=0.2, head_angle=0.3)
@@ -585,6 +651,42 @@ class arm_hw(Node):
           # 实测 5~10 ms 就够，取决于控制器循环周期；这里保守留   20 ms
           time.sleep(0.02)
 
+  def joint_move(self, group: str, angles: list, velocity_scale: float = 0.5, acceleration_scale: float = 0.9) -> bool:
+        """执行关节运动
+
+        Args:
+            group: 规划组 ("McPlanningGroup_LEFT_ARM", "McPlanningGroup_RIGHT_ARM", "McPlanningGroup_DUAL_ARM")
+            angles: 关节角度列表 (弧度)
+            velocity_scale: 速度比例 (0-1)
+            acceleration_scale: 加速度比例 (0-1)
+
+        Returns:
+            bool: 执行是否成功
+        """
+        url = f"http://{self.server_ip}:{self.server_port}/rpc/aimdk.protocol.McMotionService/JointMove"
+        headers = {"Content-Type": "application/json"}
+
+        payload = {
+            "group": group,
+            "param": {
+                "velocity_scale": velocity_scale,
+                "acceleration_scale": acceleration_scale
+            },
+            "angles": angles
+        }
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=5)
+
+            if response.status_code == 200:
+                result = response.json()
+                return True
+            else:
+                print(f"关节运动请求失败: {response.status_code}, {response.text}")
+                return False
+
+        except Exception as e:
+            print(f"关节运动执行异常: {e}")
+            return False
   # 设置夹爪状态
   def set_gripper_value(self, left_pos=100, right_pos=100, left_vel=100, right_vel=100, 
                        left_force=60, right_force=80, left_cmd=0, right_cmd=0,
@@ -705,10 +807,11 @@ class arm_hw(Node):
 
   # 左臂坐标控制回调
   def left_arm_pose_callback(self, msg):
-    if self.left_arm_flag == True:
-        self.get_logger().info(f'abord left linear_move api')
+    start_time = time.time()  # 记录开始时间
+    if self.arm_running_flag == True:
+        self.get_logger().warn(f'abord left linear_move api')
         return
-    self.left_arm_flag = True
+    self.arm_running_flag = True
     try:
         
         # 从PoseStamped消息中提取位置和姿态
@@ -725,25 +828,29 @@ class arm_hw(Node):
         # self.check_and_set_action(self.config.target_action)
         
         # 调用linear_move控制左臂
-        resp = self.linear_move('left', left_pos, left_ori, None, None)
+        resp = self.planning_move('left', left_pos, left_ori, None, None)
         
         if resp.status_code == 200:
             self.get_logger().info(f'左臂运动指令执行成功: 位置({pos.x:.3f}, {pos.y:.3f}, {pos.z:.3f}), roll:{roll},pitch:{pitch},yaw:{yaw}, ori:{left_ori}')
         else:
             self.get_logger().error(f'左臂运动指令执行失败: HTTP {resp.status_code}')
-        self.left_arm_flag = False
+        self.arm_running_flag = False
             
     except Exception as e:
         self.get_logger().error(f'左臂运动指令处理失败: {str(e)}')
-        self.left_arm_flag = False
+        self.arm_running_flag = False
+    end_time = time.time()  # 记录结束时间
+    elapsed_ms = (end_time - start_time) * 1000  # 转为毫秒
+    self.get_logger().info(f"left_arm_pose_callback耗时: {elapsed_ms:.2f} ms")
 
   # 右臂坐标控制回调
   def right_arm_pose_callback(self, msg):
-    if self.left_arm_flag == True:
+    start_time = time.time()  # 记录开始时间
+    if self.arm_running_flag == True:
         self.get_logger().info(f'abord right linear_move api')
         return
     try:
-        self.left_arm_flag = True
+        self.arm_running_flag = True
         # 从PoseStamped消息中提取位置和姿态
         pos = msg.pose.position
         ori = msg.pose.orientation
@@ -753,7 +860,7 @@ class arm_hw(Node):
         right_ori = {"x": ori.x, "y": ori.y, "z": ori.z, "w": ori.w}
         
         # 获取roll pitch yaw角
-        roll, pitch, yaw = quaternion_to_rpy_scipy(ori.x, ori.y, ori.z, ori.w)
+        #roll, pitch, yaw = quaternion_to_rpy_scipy(ori.x, ori.y, ori.z, ori.w)
 
         # roll = np.pi
         # pitch = -np.pi/2
@@ -766,17 +873,20 @@ class arm_hw(Node):
         # self.check_and_set_action(self.config.target_action)
         
         # 调用linear_move控制右臂
-        resp = self.linear_move('right', None, None, right_pos, right_ori)
+        resp = self.planning_move('right', None, None, right_pos, right_ori)
         
         if resp.status_code == 200:
-            self.get_logger().info(f'右臂运动指令执行成功: 位置({pos.x:.3f}, {pos.y:.3f}, {pos.z:.3f}), roll:{roll},pitch:{pitch},yaw:{yaw}, orin:{right_ori}')
+            self.get_logger().info(f'右臂运动指令执行成功: 位置({pos.x:.3f}, {pos.y:.3f}, {pos.z:.3f})')
         else:
             self.get_logger().error(f'右臂运动指令执行失败: HTTP {resp.status_code}')
-        self.left_arm_flag = False
+        self.arm_running_flag = False
             
     except Exception as e:
         self.get_logger().error(f'右臂运动指令处理失败: {str(e)}')
-        self.left_arm_flag = False
+        self.arm_running_flag = False
+    end_time = time.time()  # 记录结束时间
+    elapsed_ms = (end_time - start_time) * 1000  # 转为毫秒
+    self.get_logger().info(f"right_arm_pose_callback耗时: {elapsed_ms:.2f} ms")
 
   # 回调函数
   def waist_lift_head_callback(self, msg):
@@ -852,12 +962,67 @@ class arm_hw(Node):
           print(f"Failed to extract TCP: {e}")
           return None
 
+  # 新增：左臂关节空间控制回调
+  def left_arm_joint_callback(self, msg):
+      if self.arm_running_flag == True:
+        self.get_logger().info(f'abord right linear_move api')
+        return True
+
+      """左臂关节空间控制回调"""
+      start_time = time.time()  # 记录开始时间
+
+      if len(msg.data) != 7:
+          self.get_logger().error(f"左臂关节角度数量错误，应为7，实际为{len(msg.data)}")
+          return
+      success = self.joint_move(
+          group="McPlanningGroup_LEFT_ARM",
+          angles=list(msg.data)
+      )
+      if success:
+          self.get_logger().info(f"左臂关节运动指令已下发: {msg.data}")
+      else:
+          self.get_logger().error("左臂关节运动指令执行失败")
+
+      end_time = time.time()  # 记录结束时间
+      elapsed_ms = (end_time - start_time) * 1000  # 转为毫秒
+      self.get_logger().info(f"left_arm_joint_callback耗时: {elapsed_ms:.2f} ms")
+
+      self.arm_running_flag = False
+
+  # 新增：右臂关节空间控制回调
+  def right_arm_joint_callback(self, msg):
+      if self.arm_running_flag == True:
+        self.get_logger().info(f'abord right linear_move api')
+        return True
+
+      """右臂关节空间控制回调"""
+      start_time = time.time()  # 记录开始时间
+
+      if len(msg.data) != 7:
+          self.get_logger().error(f"右臂关节角度数量错误，应为7，实际为{len(msg.data)}")
+          return
+      success = self.joint_move(
+          group="McPlanningGroup_RIGHT_ARM",
+          angles=list(msg.data)
+      )
+      if success:
+          self.get_logger().info(f"右臂关节运动指令已下发: {msg.data}")
+      else:
+          self.get_logger().error("右臂关节运动指令执行失败")
+
+      end_time = time.time()  # 记录结束时间
+      elapsed_ms = (end_time - start_time) * 1000  # 转为毫秒
+      self.get_logger().info(f"right_arm_joint_callback耗时: {elapsed_ms:.2f} ms")
+
+      self.arm_running_flag = False
+
+
 if __name__=='__main__' :
   rclpy.init()
   node = arm_hw()
-  node.init_arm()
-  time.sleep(1)
-  node.rotate_gripper()
+#   node.init_arm()
+#   time.sleep(1)
+#   node.rotate_gripper()
   #node.move_arm(0.75, -0.2, 0.9)
   #time.sleep(0.1)
   #node.move_arm(0.8, -0.24, 1.1)
