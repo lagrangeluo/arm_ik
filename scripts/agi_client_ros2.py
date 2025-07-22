@@ -286,23 +286,38 @@ class AGIClient(Node):
 def main():
     rclpy.init()
     client = AGIClient()
-    rclpy.spin_once(client)
+    # 启动spin线程
+    spin_thread = threading.Thread(target=rclpy.spin, args=(client,), daemon=True)
+    spin_thread.start()
     
     # 现在可以直接使用client，无需手动spin
-    client.moveL(0.8, -0.2, 1.0, '0du')
-    client.moveL(0.7, -0.2, 1.0, '0du')
-    client.moveL(0.7, -0.1, 1.0, '0du')
-    client.moveL(0.8, -0.1, 1.0, '0du')
+    move_cmds = [
+        (0.8, -0.2, 1.0, '0du'),
+        (0.7, -0.2, 1.0, '0du'),
+        (0.7, -0.1, 1.0, '0du'),
+        (0.8, -0.1, 1.0, '0du'),
+    ]
+    i = 0
+    try:
+        while True:
+            cmd = move_cmds[i]
+            client.moveL(0.8, -0.2, 1.0, '0du')
+            client.moveL(0.7, -0.2, 1.0, '0du')
+            client.moveL(0.7, -0.1, 1.0, '0du')
+            client.moveL(0.8, -0.1, 1.0, '0du')
+            client.moveL_delta(-0.1,0,0)
+            client.moveL_delta(0,-0.1,0)
+            client.moveL_delta(0.1,0,0)
+            client.moveL_delta(0,0.1,0)
+            client.move_rotate(1.57)
+            client.move_rotate(-1.57)
+
+    except KeyboardInterrupt:
+        print("\n收到Ctrl+C，准备退出...")
 
     # client.open_gripper()
     # 示例：发布腰部升降头部指令
     # client.send_waist_lift_head([0.0, 0.2, 0.3])
-    client.moveL_delta(-0.1,0,0)
-    client.moveL_delta(0,-0.1,0)
-    client.moveL_delta(0.1,0,0)
-    client.moveL_delta(0,0.1,0)
-    client.move_rotate(1.57)
-    client.move_rotate(-1.57)
 
     # client.moveL_delta(0,0.1,0)
     # time.sleep(2)
@@ -310,6 +325,8 @@ def main():
     
     # 退出时调用shutdown
     client.shutdown()
+    # 等待spin线程退出
+    spin_thread.join(timeout=1.0)
 
 if __name__ == "__main__":
     main()
